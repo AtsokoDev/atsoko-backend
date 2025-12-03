@@ -10,6 +10,9 @@ public/
 *.csv
 image-mapping.json
 
+# Ignore large data files
+/database-dump
+
 # Deployment
 logs/
 *.log.*
