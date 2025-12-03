@@ -13,36 +13,99 @@ npm install
 - สร้าง database ชื่อ `demo_db`
 - แก้ไขค่าใน `.env` ให้ตรงกับ database ของคุณ
 
-**ข้อมูล Database สำหรับ Demo:**
-```
-Host: localhost
-Port: 5432
-Database: demo_db
-Username: postgres
-Password: postgres
-```
+**ข้อมูล Database สำหรับ## Development
 
-3. สร้างตารางและข้อมูลตัวอย่าง
-```bash
-psql -U postgres -d demo_db -f database/schema.sql
-```
-
-## การรัน
+### Quick Start with Docker (Recommended)
 
 ```bash
-# Development mode
-npm run dev
+# Clone and setup
+git clone <repo-url>
+cd atsoko-backend
+cp .env.docker .env
 
-# Production mode
-npm start
+# Start everything
+docker-compose up -d
+
+# Import data
+docker-compose exec backend node scripts/import-data.js
 ```
 
-## การ Import ข้อมูล
+See [TEAM-DEV.md](./TEAM-DEV.md) for team development guide.
+See [DOCKER-DEV.md](./DOCKER-DEV.md) for Docker setup details.
 
-### 1. สร้าง schema ใหม่
-```bash
+### Local Development (Without Docker)
+
+1. Install PostgreSQL 12+
+2. Install Node.js 18+
+3. Create database and run `database/schema.sql`
+4. Copy `.env.example` to `.env` and configure
+5. Run `npm install`
+6. Run `node scripts/import-data.js`
+7. Run `npm run dev`
+
+## Deployment
+
+For production deployment to VPS, see [deploy/DEPLOYMENT.md](./deploy/DEPLOYMENT.md).
+
+Quick deployment overview:
+- SSL/HTTPS with Let's Encrypt
+- Nginx reverse proxy
+- Systemd service or PM2
+- Automated backups
+- Health monitoring
+- Security hardening
+
+## API Documentation
+
+### Endpoints
+
+#### `GET /`
+Health check endpoint
+
+#### `GET /api/properties`
+Get all properties with pagination and filtering
+
+Query parameters:
+- `page` - Page number (default: 1)
+- `limit` - Items per page (default: 20)
+- `type` - Filter by type (Factory, Warehouse)
+- `province` - Filter by province
+- `district` - Filter by district
+- `min_price` - Minimum price
+- `max_price` - Maximum price
+- `min_size` - Minimum size (sqm)
+- `max_size` - Maximum size (sqm)
+
+#### `GET /api/properties/:id`
+Get single property by ID
+
+#### `GET /api/stats`
+Get statistics (total properties, by type, by province)
+
+## Project Structure
+
+```
+atsoko-backend/
+├── config/          # Database configuration
+├── database/        # SQL schema
+├── deploy/          # Deployment files & documentation
+├── routes/          # API routes
+├── scripts/         # Data import scripts
+├── public/          # Static files (images)
+└── server.js        # Main application file
+```
+
+## Contributing
+
+1. Create feature branch
+2. Make changes
+3. Test locally with Docker
+4. Submit Pull Request
+
+## License
+
+ISC
 sudo -u postgres psql -d demo_db -f database/schema-new.sql
-```
 
 ### 2. Download และแปลงรูปภาพ
 ```bash
