@@ -9,3 +9,11 @@ public/
 # Ignore large data files
 *.csv
 image-mapping.json
+
+# Deployment
+logs/
+*.log.*
+
+# Docker
+.env.docker
+docker-compose.override.yml

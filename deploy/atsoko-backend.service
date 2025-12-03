@@ -1,0 +1,27 @@
+[Unit]
+Description=Atsoko Backend API Service
+Documentation=https://github.com/your-username/atsoko-backend
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/atsoko-backend
+Environment=NODE_ENV=production
+EnvironmentFile=/var/www/atsoko-backend/.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=atsoko-backend
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Performance
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
