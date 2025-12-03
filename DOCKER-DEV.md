@@ -2,10 +2,25 @@
 
 Quick and easy local development setup using Docker.
 
-## Prerequisites
+## ⚠️ Prerequisites
 
-- Docker Desktop installed
-- Git
+**ต้องติดตั้ง Docker ก่อน!**
+
+ถ้ายังไม่มี Docker ให้อ่านคู่มือติดตั้งก่อน: **[DOCKER-INSTALL.md](./DOCKER-INSTALL.md)**
+
+สรุป:
+- **Windows/macOS**: ติดตั้ง Docker Desktop
+- **Linux**: ติดตั้ง Docker Engine + Docker Compose
+
+ตรวจสอบว่าติดตั้งสำเร็จ:
+```bash
+docker --version
+docker-compose --version
+```
+
+---
+
+## 🚀 Quick Start (สำหรับทีม Dev)
 
 ## Quick Start (สำหรับทีม Dev)
 
