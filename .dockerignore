@@ -1,0 +1,20 @@
+# .dockerignore
+node_modules
+npm-debug.log
+.git
+.gitignore
+.env
+.env.production
+README.md
+docker-compose.yml
+Dockerfile
+.DS_Store
+*.log
+
+# Data files
+File*.csv
+image-mapping.json
+public/
+
+# Deployment
+deploy/
