@@ -52,11 +52,14 @@ async function importData() {
             terms_conditions, warehouse_length, electricity_system,
             clear_height, features, landlord_name, landlord_contact,
             agent_team, coordinates, floor_load, land_size, land_postfix,
-            remarks, slug, images
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)
+            remarks, slug, images, price_alternative, approve_status, post_modified_date
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)
           ON CONFLICT (property_id) DO UPDATE SET
             title = EXCLUDED.title,
             images = EXCLUDED.images,
+            price_alternative = EXCLUDED.price_alternative,
+            approve_status = EXCLUDED.approve_status,
+            post_modified_date = EXCLUDED.post_modified_date,
             updated_at = CURRENT_TIMESTAMP
         `, [
           propertyId,
@@ -88,7 +91,10 @@ async function importData() {
           record['fave_property_land_postfix'],
           record['fave_remarks3'],
           record['Slug'],
-          JSON.stringify(images)
+          JSON.stringify(images),
+          parseFloat(record['fave_property_price']) || null,
+          record['Approve Status'],
+          record['Post Modified Date'] || null
         ]);
 
         imported++;

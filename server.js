@@ -13,9 +13,11 @@ app.use(express.urlencoded({ extended: true }));
 // Routes
 const propertiesRouter = require('./routes/properties');
 const statsRouter = require('./routes/stats');
+const uploadRouter = require('./routes/upload');
 
 app.use('/api/properties', propertiesRouter);
 app.use('/api/stats', statsRouter);
+app.use('/api/upload', uploadRouter);
 
 // Serve static images
 app.use('/images', express.static('public/images'));
