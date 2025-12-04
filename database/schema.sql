@@ -35,6 +35,9 @@ CREATE TABLE IF NOT EXISTS properties (
   remarks TEXT,
   slug TEXT,
   images JSONB,
+  price_alternative DECIMAL(12, 2),
+  approve_status VARCHAR(50),
+  post_modified_date TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

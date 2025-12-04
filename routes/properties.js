@@ -29,7 +29,24 @@ const sanitizePattern = (value) => {
 // GET all properties with filters
 router.get('/', async (req, res) => {
     try {
-        const { type, province, district, min_price, max_price, min_size, max_size, page = 1, limit = 20 } = req.query;
+        const {
+            keyword,           // Search by title
+            status,            // Rent or Sale
+            type,              // Warehouse or Factory
+            province,
+            district,
+            sub_district,      // NEW: Subdistrict filter
+            min_size,          // Area min
+            max_size,          // Area max
+            min_price,         // Price min
+            max_price,         // Price max
+            features,          // NEW: Features array (comma-separated or array)
+            min_height,        // NEW: Clear height min
+            max_height,        // NEW: Clear height max
+            floor_load,        // NEW: Floor loading
+            page = 1,
+            limit = 20
+        } = req.query;
 
         // Validate pagination parameters
         const validatedPage = validateInteger(page, 'page', 1);
@@ -41,6 +58,27 @@ router.get('/', async (req, res) => {
         const countParams = [];
         let paramCount = 1;
 
+        // 1. Keyword search in title
+        if (keyword) {
+            const sanitizedKeyword = sanitizePattern(keyword);
+            query += ` AND title ILIKE $${paramCount}`;
+            countQuery += ` AND title ILIKE $${paramCount}`;
+            params.push(`%${sanitizedKeyword}%`);
+            countParams.push(`%${sanitizedKeyword}%`);
+            paramCount++;
+        }
+
+        // 2. Status filter (Rent or Sale)
+        if (status) {
+            const sanitizedStatus = sanitizePattern(status);
+            query += ` AND status ILIKE $${paramCount}`;
+            countQuery += ` AND status ILIKE $${paramCount}`;
+            params.push(`%${sanitizedStatus}%`);
+            countParams.push(`%${sanitizedStatus}%`);
+            paramCount++;
+        }
+
+        // 3. Type filter (Warehouse or Factory)
         if (type) {
             const sanitizedType = sanitizePattern(type);
             query += ` AND type ILIKE $${paramCount}`;
@@ -49,6 +87,8 @@ router.get('/', async (req, res) => {
             countParams.push(`%${sanitizedType}%`);
             paramCount++;
         }
+
+        // 4. Province filter
         if (province) {
             const sanitizedProvince = sanitizePattern(province);
             query += ` AND province ILIKE $${paramCount}`;
@@ -57,6 +97,8 @@ router.get('/', async (req, res) => {
             countParams.push(`%${sanitizedProvince}%`);
             paramCount++;
         }
+
+        // 5. District filter
         if (district) {
             const sanitizedDistrict = sanitizePattern(district);
             query += ` AND district ILIKE $${paramCount}`;
@@ -65,22 +107,18 @@ router.get('/', async (req, res) => {
             countParams.push(`%${sanitizedDistrict}%`);
             paramCount++;
         }
-        if (min_price) {
-            const validatedMinPrice = validateNumber(min_price, 'min_price');
-            query += ` AND price >= $${paramCount}`;
-            countQuery += ` AND price >= $${paramCount}`;
-            params.push(validatedMinPrice);
-            countParams.push(validatedMinPrice);
+
+        // 6. Sub-district filter (NEW)
+        if (sub_district) {
+            const sanitizedSubDistrict = sanitizePattern(sub_district);
+            query += ` AND sub_district ILIKE $${paramCount}`;
+            countQuery += ` AND sub_district ILIKE $${paramCount}`;
+            params.push(`%${sanitizedSubDistrict}%`);
+            countParams.push(`%${sanitizedSubDistrict}%`);
             paramCount++;
         }
-        if (max_price) {
-            const validatedMaxPrice = validateNumber(max_price, 'max_price');
-            query += ` AND price <= $${paramCount}`;
-            countQuery += ` AND price <= $${paramCount}`;
-            params.push(validatedMaxPrice);
-            countParams.push(validatedMaxPrice);
-            paramCount++;
-        }
+
+        // 7. Area (Size) filter - Min
         if (min_size) {
             const validatedMinSize = validateNumber(min_size, 'min_size');
             query += ` AND size >= $${paramCount}`;
@@ -89,6 +127,8 @@ router.get('/', async (req, res) => {
             countParams.push(validatedMinSize);
             paramCount++;
         }
+
+        // 8. Area (Size) filter - Max
         if (max_size) {
             const validatedMaxSize = validateNumber(max_size, 'max_size');
             query += ` AND size <= $${paramCount}`;
@@ -98,8 +138,73 @@ router.get('/', async (req, res) => {
             paramCount++;
         }
 
+        // 9. Price filter - Smart selection based on status
+        // If status is "sale", use price_alternative, otherwise use price (default for rent)
+        const priceField = status && status.toLowerCase().includes('sale') ? 'price_alternative' : 'price';
+
+        if (min_price) {
+            const validatedMinPrice = validateNumber(min_price, 'min_price');
+            query += ` AND ${priceField} >= $${paramCount}`;
+            countQuery += ` AND ${priceField} >= $${paramCount}`;
+            params.push(validatedMinPrice);
+            countParams.push(validatedMinPrice);
+            paramCount++;
+        }
+
+        if (max_price) {
+            const validatedMaxPrice = validateNumber(max_price, 'max_price');
+            query += ` AND ${priceField} <= $${paramCount}`;
+            countQuery += ` AND ${priceField} <= $${paramCount}`;
+            params.push(validatedMaxPrice);
+            countParams.push(validatedMaxPrice);
+            paramCount++;
+        }
+
+        // 10. Features filter (NEW) - Array support
+        if (features) {
+            // Support both comma-separated string and array
+            const featuresArray = Array.isArray(features) ? features : features.split(',').map(f => f.trim());
+
+            // Use JSONB contains operator (@>) to check if all requested features exist
+            query += ` AND features @> $${paramCount}::jsonb`;
+            countQuery += ` AND features @> $${paramCount}::jsonb`;
+            params.push(JSON.stringify(featuresArray));
+            countParams.push(JSON.stringify(featuresArray));
+            paramCount++;
+        }
+
+        // 11. Clear Height filter (NEW) - Min
+        if (min_height) {
+            const validatedMinHeight = validateNumber(min_height, 'min_height');
+            query += ` AND clear_height >= $${paramCount}`;
+            countQuery += ` AND clear_height >= $${paramCount}`;
+            params.push(validatedMinHeight);
+            countParams.push(validatedMinHeight);
+            paramCount++;
+        }
+
+        // 12. Clear Height filter (NEW) - Max
+        if (max_height) {
+            const validatedMaxHeight = validateNumber(max_height, 'max_height');
+            query += ` AND clear_height <= $${paramCount}`;
+            countQuery += ` AND clear_height <= $${paramCount}`;
+            params.push(validatedMaxHeight);
+            countParams.push(validatedMaxHeight);
+            paramCount++;
+        }
+
+        // 13. Floor Load filter (NEW)
+        if (floor_load) {
+            const sanitizedFloorLoad = sanitizePattern(floor_load);
+            query += ` AND floor_load ILIKE $${paramCount}`;
+            countQuery += ` AND floor_load ILIKE $${paramCount}`;
+            params.push(`%${sanitizedFloorLoad}%`);
+            countParams.push(`%${sanitizedFloorLoad}%`);
+            paramCount++;
+        }
+
         // Add ordering and pagination
-        query += ` ORDER BY id LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+        query += ` ORDER BY id DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
         params.push(validatedLimit, (validatedPage - 1) * validatedLimit);
 
         // Execute both queries
@@ -118,6 +223,19 @@ router.get('/', async (req, res) => {
                 limit: validatedLimit,
                 total,
                 pages: Math.ceil(total / validatedLimit)
+            },
+            filters: {
+                keyword,
+                status,
+                type,
+                province,
+                district,
+                sub_district,
+                price_range: { min: min_price, max: max_price, field: priceField },
+                size_range: { min: min_size, max: max_size },
+                height_range: { min: min_height, max: max_height },
+                features,
+                floor_load
             }
         });
     } catch (error) {
@@ -148,6 +266,165 @@ router.get('/:id', async (req, res) => {
         res.json({ success: true, data: result.rows[0] });
     } catch (error) {
         console.error(error);
+        res.status(500).json({ success: false, error: 'Database error' });
+    }
+});
+
+// POST /api/properties
+// TODO: Add authentication middleware to protect this route
+router.post('/', async (req, res) => {
+    try {
+        const data = req.body;
+
+        // Validate request body exists
+        if (!data || Object.keys(data).length === 0) {
+            return res.status(400).json({ success: false, error: 'Request body is empty' });
+        }
+
+        // Define required fields (property_id is now auto-generated, so not required from user)
+        const requiredFields = ['title', 'type', 'province', 'price', 'size', 'status'];
+        const missingFields = requiredFields.filter(field => !data[field]);
+
+        if (missingFields.length > 0) {
+            return res.status(400).json({
+                success: false,
+                error: `Missing required fields: ${missingFields.join(', ')}`
+            });
+        }
+
+        // Define all allowed fields (excluding property_id as it will be auto-generated)
+        const allowedFields = [
+            "title", "date", "type",
+            "status",
+            "labels",
+            "country",
+            "province",
+            "district",
+            "sub_district",
+            "location",
+            "price",
+            "price_postfix",
+            "size",
+            "size_prefix",
+            "terms_conditions",
+            "warehouse_length",
+            "electricity_system",
+            "clear_height",
+            "features",
+            "landlord_name",
+            "landlord_contact",
+            "agent_team",
+            "coordinates",
+            "floor_load",
+            "land_size",
+            "land_postfix",
+            "remarks",
+            "slug",
+            "images"
+        ];
+
+        // Filter only allowed fields from request
+        const fieldsToInsert = Object.keys(data).filter(key => allowedFields.includes(key));
+
+        if (fieldsToInsert.length === 0) {
+            return res.status(400).json({ success: false, error: 'No valid fields provided' });
+        }
+
+        // Helper function to get status code
+        const getStatusCode = (status) => {
+            if (!status) return 'R';
+            const statusLower = status.toLowerCase();
+            if (statusLower.includes('rent') && statusLower.includes('sale')) {
+                return 'SR';
+            } else if (statusLower.includes('sale')) {
+                return 'S';
+            } else {
+                return 'R';
+            }
+        };
+
+        // Create a temporary unique property_id for initial insert
+        const tempPropertyId = `TEMP_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+        // Build INSERT query with temporary property_id
+        const columnsWithPropertyId = [...fieldsToInsert, 'property_id'];
+        const columns = columnsWithPropertyId.map(field => `"${field}"`).join(', ');
+        const placeholders = columnsWithPropertyId.map((_, idx) => `$${idx + 1}`).join(', ');
+        const valuesWithPropertyId = [...fieldsToInsert.map(field => data[field]), tempPropertyId];
+
+        // Insert with temporary property_id
+        const insertQuery = `
+            INSERT INTO properties (${columns})
+            VALUES (${placeholders})
+            RETURNING id, status
+        `;
+
+        const insertResult = await pool.query(insertQuery, valuesWithPropertyId);
+        const newId = insertResult.rows[0].id;
+        const status = insertResult.rows[0].status;
+
+        // Generate the final property_id: AT{id}{status_code}
+        const statusCode = getStatusCode(status);
+        let propertyId = `AT${newId}${statusCode}`;
+
+        // Check if this property_id already exists and find an available one if needed
+        let checkQuery = 'SELECT id FROM properties WHERE property_id = $1 AND id != $2';
+        let checkResult = await pool.query(checkQuery, [propertyId, newId]);
+
+        // If duplicate exists, find the next available number
+        if (checkResult.rows.length > 0) {
+            // Get the maximum ID number used in property_id format AT*
+            // Use regex to extract only the numeric part between AT and status code
+            const maxIdQuery = `
+                SELECT COALESCE(
+                    MAX(
+                        CAST(
+                            NULLIF(SUBSTRING(property_id FROM '^AT([0-9]+)'), '') 
+                            AS INTEGER
+                        )
+                    ), 
+                    0
+                ) as max_num
+                FROM properties 
+                WHERE property_id ~ '^AT[0-9]+(R|S|SR)$'
+            `;
+            const maxIdResult = await pool.query(maxIdQuery);
+            const nextAvailableId = maxIdResult.rows[0].max_num + 1;
+            propertyId = `AT${nextAvailableId}${statusCode}`;
+        }
+
+        // Update with the final property_id
+        const updateQuery = `
+            UPDATE properties 
+            SET property_id = $1 
+            WHERE id = $2 
+            RETURNING *
+        `;
+
+        const result = await pool.query(updateQuery, [propertyId, newId]);
+
+        res.status(201).json({
+            success: true,
+            data: result.rows[0],
+            message: 'Property created successfully'
+        });
+
+    } catch (error) {
+        console.error(error);
+        // Check for duplicate property_id or slug
+        if (error.code === '23505') {
+            return res.status(409).json({
+                success: false,
+                error: 'Property with this property_id or slug already exists'
+            });
+        }
+        // Check for foreign key violations
+        if (error.code === '23503') {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid reference to related data'
+            });
+        }
         res.status(500).json({ success: false, error: 'Database error' });
     }
 });
