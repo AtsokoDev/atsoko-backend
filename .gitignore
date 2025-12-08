@@ -15,6 +15,7 @@ image-mapping.json
 
 # Ignore large data files
 /database-dump
+/scripts
 
 # Deployment
 logs/
