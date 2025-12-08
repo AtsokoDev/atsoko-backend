@@ -14,10 +14,16 @@ app.use(express.urlencoded({ extended: true }));
 const propertiesRouter = require('./routes/properties');
 const statsRouter = require('./routes/stats');
 const uploadRouter = require('./routes/upload');
+const tipsRouter = require('./routes/tips');
+const faqRouter = require('./routes/faq');
+const contactRouter = require('./routes/contact');
 
 app.use('/api/properties', propertiesRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/upload', uploadRouter);
+app.use('/api/tips', tipsRouter);
+app.use('/api/faq', faqRouter);
+app.use('/api/contact', contactRouter);
 
 // Serve static images
 app.use('/images', express.static('public/images'));
