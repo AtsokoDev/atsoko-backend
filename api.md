@@ -1,20 +1,333 @@
 # Backend API Documentation
 
 > **Base URL**: `http://localhost:3000`  
-> **Version**: 1.0.0  
+> **Version**: 2.0.0  
 > **Last Updated**: 2025-12-08
 
 ---
 
 ## 📑 Table of Contents
 
-1. [Properties API](#properties-api)
-2. [Statistics API](#statistics-api)
-3. [Upload API](#upload-api)
-4. [Tips/Articles API](#tipsarticles-api)
-5. [FAQ API](#faq-api)
-6. [Contact Form API](#contact-form-api)
-7. [Static Files](#static-files)
+1. [🔐 Authentication API](#authentication-api) ⭐ NEW
+2. [Properties API](#properties-api)
+3. [Statistics API](#statistics-api)
+4. [Upload API](#upload-api)
+5. [Tips/Articles API](#tipsarticles-api)
+6. [FAQ API](#faq-api)
+7. [Contact Form API](#contact-form-api)
+8. [Static Files](#static-files)
+
+---
+
+## 🔐 Authentication API
+
+Base path: `/api/auth`
+
+### Overview
+
+ระบบ Authentication ใช้ JWT (JSON Web Tokens) สำหรับการยืนยันตัวตน
+
+**Roles:**
+| Role | Description |
+|------|-------------|
+| `admin` | ผู้ดูแลระบบ - จัดการ properties ทั้งหมด, publish, สร้าง users |
+| `agent` | ตัวแทน - จัดการ properties ของ team ตัวเอง, สร้างได้เฉพาะ pending |
+| `guest` | ผู้เยี่ยมชม - ดูเฉพาะ properties ที่ published, ไม่เห็นข้อมูลลับ |
+
+**Token Expiration:**
+- Access Token: 15 นาที
+- Refresh Token: 7 วัน
+
+---
+
+### 1. POST `/api/auth/login` - Login
+
+เข้าสู่ระบบและรับ tokens
+
+#### Request Body
+
+```json
+{
+  "email": "admin@atsoko.com",
+  "password": "admin123456"
+}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "user": {
+      "id": 1,
+      "email": "admin@atsoko.com",
+      "name": "Administrator",
+      "role": "admin",
+      "team": null
+    },
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refreshToken": "abc123...",
+    "expiresIn": "15m"
+  }
+}
+```
+
+#### Error Responses
+
+```json
+{
+  "success": false,
+  "error": "Invalid email or password"
+}
+```
+
+---
+
+### 2. POST `/api/auth/register` - Register New User
+
+สร้างผู้ใช้ใหม่ (Admin only)
+
+> 🔒 **Requires**: Admin Authentication
+
+#### Headers
+
+```
+Authorization: Bearer <admin_access_token>
+Content-Type: application/json
+```
+
+#### Request Body
+
+```json
+{
+  "email": "agent1@atsoko.com",
+  "password": "agent123",
+  "name": "Agent Team A",
+  "role": "agent",
+  "team": "A"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `email` | string | ✅ | อีเมล (unique) |
+| `password` | string | ✅ | รหัสผ่าน (min 6 chars) |
+| `name` | string | ❌ | ชื่อผู้ใช้ |
+| `role` | string | ❌ | `admin` หรือ `agent` (default: agent) |
+| `team` | string | ✅ (for agent) | `A`, `B`, หรือ `C` |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "message": "User created successfully",
+  "data": {
+    "id": 2,
+    "email": "agent1@atsoko.com",
+    "name": "Agent Team A",
+    "role": "agent",
+    "team": "A",
+    "created_at": "2025-12-08T07:17:19.057Z"
+  }
+}
+```
+
+---
+
+### 3. POST `/api/auth/logout` - Logout
+
+ออกจากระบบและ revoke refresh token
+
+> 🔒 **Requires**: Authentication
+
+#### Headers
+
+```
+Authorization: Bearer <access_token>
+```
+
+#### Request Body (Optional)
+
+```json
+{
+  "refreshToken": "abc123..."
+}
+```
+
+> **Note**: ถ้าไม่ส่ง refreshToken จะ logout จากทุกอุปกรณ์
+
+#### Response
+
+```json
+{
+  "success": true,
+  "message": "Logged out successfully"
+}
+```
+
+---
+
+### 4. POST `/api/auth/refresh` - Refresh Token
+
+รับ access token ใหม่
+
+#### Request Body
+
+```json
+{
+  "refreshToken": "abc123..."
+}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6...",
+    "expiresIn": "15m"
+  }
+}
+```
+
+---
+
+### 5. GET `/api/auth/me` - Get Current User
+
+ดึงข้อมูลผู้ใช้ปัจจุบัน
+
+> 🔒 **Requires**: Authentication
+
+#### Headers
+
+```
+Authorization: Bearer <access_token>
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "email": "admin@atsoko.com",
+    "name": "Administrator",
+    "role": "admin",
+    "team": null
+  }
+}
+```
+
+---
+
+### 6. GET `/api/auth/users` - List All Users
+
+ดึงรายการผู้ใช้ทั้งหมด (Admin only)
+
+> 🔒 **Requires**: Admin Authentication
+
+#### Headers
+
+```
+Authorization: Bearer <admin_access_token>
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "email": "admin@atsoko.com",
+      "name": "Administrator",
+      "role": "admin",
+      "team": null,
+      "is_active": true,
+      "created_at": "2025-12-08T07:00:00.000Z"
+    },
+    {
+      "id": 2,
+      "email": "agent1@atsoko.com",
+      "name": "Agent Team A",
+      "role": "agent",
+      "team": "A",
+      "is_active": true,
+      "created_at": "2025-12-08T07:17:19.057Z"
+    }
+  ]
+}
+```
+
+---
+
+### 7. PUT `/api/auth/users/:id` - Update User
+
+แก้ไขข้อมูลผู้ใช้ (Admin only)
+
+> 🔒 **Requires**: Admin Authentication
+
+#### Request Body
+
+```json
+{
+  "name": "Updated Name",
+  "role": "admin",
+  "team": "B",
+  "is_active": false
+}
+```
+
+#### Response
+
+```json
+{
+  "success": true,
+  "message": "User updated successfully",
+  "data": {
+    "id": 2,
+    "email": "agent1@atsoko.com",
+    "name": "Updated Name",
+    "role": "admin",
+    "team": "B",
+    "is_active": false,
+    "updated_at": "2025-12-08T08:00:00.000Z"
+  }
+}
+```
+
+---
+
+### Using Authentication in Requests
+
+#### Step 1: Login
+
+```bash
+curl -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "admin@atsoko.com", "password": "admin123456"}'
+```
+
+#### Step 2: Use Access Token
+
+```bash
+curl http://localhost:3000/api/properties \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6..."
+```
+
+#### Step 3: Refresh When Expired
+
+```bash
+curl -X POST http://localhost:3000/api/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken": "abc123..."}'
+```
 
 ---
 
@@ -22,9 +335,33 @@
 
 Base path: `/api/properties`
 
+### Access Control
+
+| Role | GET (list/detail) | POST | PUT | DELETE |
+|------|-------------------|------|-----|--------|
+| Guest | ✅ published only, no secret fields | ❌ | ❌ | ❌ |
+| Agent | ✅ own team only | ✅ (pending) | ✅ (own team, pending) | ✅ (own team, pending) |
+| Admin | ✅ all | ✅ all | ✅ all | ✅ all |
+
+**Secret Fields** (hidden from Guest):
+- `coordinates`
+- `landlord_name`
+- `landlord_contact`
+- `agent_team`
+
+---
+
 ### 1. GET `/api/properties` - List Properties
 
-ดึงรายการ properties ทั้งหมด พร้อมกับ filters และ pagination
+ดึงรายการ properties พร้อมกับ filters และ pagination
+
+> 🔓 **Public Access** - แต่ Guest จะเห็นเฉพาะ published และไม่เห็น secret fields
+
+#### Headers (Optional - for authenticated access)
+
+```
+Authorization: Bearer <access_token>
+```
 
 #### Query Parameters
 
@@ -171,7 +508,21 @@ GET /api/properties/AT1R
 
 สร้าง property ใหม่
 
-> ⚠️ **TODO**: ต้องเพิ่ม authentication middleware
+> 🔒 **Requires**: Authentication (Admin or Agent)
+
+#### Headers
+
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+#### Behavior by Role
+
+| Role | `approve_status` | `agent_team` |
+|------|------------------|---------------|
+| Agent | `pending` (forced) | User's team (forced) |
+| Admin | `published` (default) or custom | Custom or null |
 
 #### Request Body (Required Fields)
 
@@ -241,7 +592,23 @@ GET /api/properties/AT1R
 
 แก้ไขข้อมูล property
 
-> ⚠️ **TODO**: ต้องเพิ่ม authentication middleware
+> 🔒 **Requires**: Authentication (Admin or Agent)
+
+#### Headers
+
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+#### Permission Rules
+
+| Role | Can Update |
+|------|------------|
+| Agent | เฉพาะ property ของ team ตัวเองที่ `approve_status = pending` |
+| Admin | ทุก property |
+
+> **Note**: Agent ไม่สามารถเปลี่ยน `approve_status` หรือ `agent_team` ได้
 
 #### Parameters
 
@@ -284,7 +651,20 @@ GET /api/properties/AT1R
 
 ลบ property
 
-> ⚠️ **TODO**: ต้องเพิ่ม authentication middleware
+> 🔒 **Requires**: Authentication (Admin or Agent)
+
+#### Headers
+
+```
+Authorization: Bearer <access_token>
+```
+
+#### Permission Rules
+
+| Role | Can Delete |
+|------|------------|
+| Agent | เฉพาะ property ของ team ตัวเองที่ `approve_status = pending` |
+| Admin | ทุก property |
 
 #### Parameters
 
@@ -358,7 +738,7 @@ Base path: `/api/upload`
 
 อัปโหลดรูปเดียว
 
-> ⚠️ **TODO**: ต้องเพิ่ม authentication middleware
+> 🔒 **Requires**: Authentication (Admin)
 
 #### Request
 
@@ -405,7 +785,7 @@ curl -X POST http://localhost:3000/api/upload/image \
 
 อัปโหลดหลายรูปพร้อมกัน (สูงสุด 20 รูป)
 
-> ⚠️ **TODO**: ต้องเพิ่ม authentication middleware
+> 🔒 **Requires**: Authentication (Admin)
 
 #### Request
 
@@ -461,7 +841,7 @@ curl -X POST http://localhost:3000/api/upload/images \
 
 ลบรูปภาพ
 
-> ⚠️ **TODO**: ต้องเพิ่ม authentication middleware
+> 🔒 **Requires**: Authentication (Admin)
 
 #### Parameters
 
@@ -565,7 +945,7 @@ Base path: `/api/tips`
 
 สร้างบทความใหม่
 
-> ⚠️ **TODO**: ต้องเพิ่ม authentication middleware
+> 🔒 **Requires**: Authentication (Admin)
 
 #### Request Body
 
@@ -589,7 +969,7 @@ Base path: `/api/tips`
 
 แก้ไขบทความ
 
-> ⚠️ **TODO**: ต้องเพิ่ม authentication middleware
+> 🔒 **Requires**: Authentication (Admin)
 
 ---
 
@@ -597,7 +977,7 @@ Base path: `/api/tips`
 
 ลบบทความ
 
-> ⚠️ **TODO**: ต้องเพิ่ม authentication middleware
+> 🔒 **Requires**: Authentication (Admin)
 
 ---
 
@@ -656,7 +1036,7 @@ Base path: `/api/faq`
 
 สร้างคำถามใหม่
 
-> ⚠️ **TODO**: ต้องเพิ่ม authentication middleware
+> 🔒 **Requires**: Authentication (Admin)
 
 #### Request Body
 
@@ -678,7 +1058,7 @@ Base path: `/api/faq`
 
 แก้ไขคำถาม
 
-> ⚠️ **TODO**: ต้องเพิ่ม authentication middleware
+> 🔒 **Requires**: Authentication (Admin)
 
 ---
 
@@ -686,7 +1066,7 @@ Base path: `/api/faq`
 
 ลบคำถาม
 
-> ⚠️ **TODO**: ต้องเพิ่ม authentication middleware
+> 🔒 **Requires**: Authentication (Admin)
 
 ---
 
@@ -753,7 +1133,7 @@ Base path: `/api/contact`
 
 ดึงรายการข้อความทั้งหมด
 
-> ⚠️ **TODO**: ต้องเพิ่ม authentication middleware
+> 🔒 **Requires**: Authentication (Admin)
 
 #### Query Parameters
 
@@ -771,7 +1151,7 @@ Base path: `/api/contact`
 
 ดึงข้อความเดียว
 
-> ⚠️ **TODO**: ต้องเพิ่ม authentication middleware
+> 🔒 **Requires**: Authentication (Admin)
 
 ---
 
@@ -779,7 +1159,7 @@ Base path: `/api/contact`
 
 อัปเดตสถานะข้อความ
 
-> ⚠️ **TODO**: ต้องเพิ่ม authentication middleware
+> 🔒 **Requires**: Authentication (Admin)
 
 #### Request Body
 
@@ -797,7 +1177,7 @@ Base path: `/api/contact`
 
 ลบข้อความ
 
-> ⚠️ **TODO**: ต้องเพิ่ม authentication middleware
+> 🔒 **Requires**: Authentication (Admin)
 
 ---
 
@@ -903,25 +1283,30 @@ http://localhost:3000/images/AT1862R_2.webp
 
 ## Development Notes
 
-### Authentication
+### Authentication ✅
 
-⚠️ **ปัจจุบัน POST, PUT, DELETE endpoints ยังไม่มี authentication**  
-ควรเพิ่ม middleware ก่อน deploy production:
+Authentication system has been implemented using JWT tokens.
 
-```javascript
-// TODO: Add authentication middleware
-router.post('/', authenticateToken, async (req, res) => {
-  // ...
-});
-```
+**Endpoints requiring authentication:**
+- All POST, PUT, DELETE operations on Properties, Upload, Tips, FAQ, Contact
+- User management (Admin only)
 
-### Coordinates Privacy
+**Public endpoints:**
+- GET Properties (filtered by approve_status for guests)
+- GET Tips, FAQ (read-only)
+- POST Contact form
 
-⚠️ **Coordinates ถูกเปิดเผยทั้งหมดในปัจจุบัน**  
-พิจารณา:
-- Approximate coordinates สำหรับ public users
-- Exact coordinates สำหรับ authenticated users
-- หรือ Field selection (?fields=...)
+### Secret Fields Protection ✅
+
+The following fields are automatically hidden from unauthenticated users (Guest):
+- `coordinates`
+- `landlord_name`
+- `landlord_contact`
+- `agent_team`
+
+### Team-Based Access ✅
+
+Agents can only access properties belonging to their assigned team (A, B, or C).
 
 ---
 
@@ -933,9 +1318,15 @@ router.post('/', authenticateToken, async (req, res) => {
 
 ## Change Log
 
+- **2025-12-08**: Added Authentication API (v2.0.0)
+  - JWT-based authentication with access/refresh tokens
+  - Role-based access control (Admin, Agent, Guest)
+  - Secret field protection for unauthenticated users
+  - Team-based filtering for Agent role
 - **2025-12-08**: Initial API documentation
 - **2025-12-04**: API v1.0.0 deployed
 
 ---
 
 **For more information, contact the development team.**
+
