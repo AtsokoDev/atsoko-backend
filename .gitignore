@@ -1,12 +1,13 @@
 node_modules/
 .env
-.env.backup
+.env.example
 .env.docker
 *.log
 .DS_Store
 
 # Ignore public folder with images (15,860+ files)
 public/
+Frontend_TEST/
 
 # Ignore large data files
 *.csv
@@ -14,6 +15,7 @@ image-mapping.json
 
 # Ignore large data files
 /database-dump
+/scripts
 
 # Deployment
 logs/

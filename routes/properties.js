@@ -1,6 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
+const {
+    authenticate,
+    optionalAuth,
+    authorize,
+    canModifyProperty,
+    removeSecretFields
+} = require('../middleware/auth');
 
 // Helper function to validate and sanitize numeric input
 const validateNumber = (value, fieldName) => {
@@ -27,7 +34,8 @@ const sanitizePattern = (value) => {
 };
 
 // GET all properties with filters
-router.get('/', async (req, res) => {
+// Uses optionalAuth - guests can access but won't see secret fields
+router.get('/', optionalAuth, async (req, res) => {
     try {
         const {
             keyword,           // Search by title
@@ -57,6 +65,21 @@ router.get('/', async (req, res) => {
         const params = [];
         const countParams = [];
         let paramCount = 1;
+
+        // Authorization filters based on user role
+        if (!req.user) {
+            // Guest: only see published properties
+            query += ` AND approve_status = 'published'`;
+            countQuery += ` AND approve_status = 'published'`;
+        } else if (req.user.role === 'agent') {
+            // Agent: see their team's properties (any status)
+            query += ` AND agent_team = $${paramCount}`;
+            countQuery += ` AND agent_team = $${paramCount}`;
+            params.push(req.user.team);
+            countParams.push(req.user.team);
+            paramCount++;
+        }
+        // Admin: can see all properties (no filter needed)
 
         // 1. Keyword search in title
         if (keyword) {
@@ -215,9 +238,15 @@ router.get('/', async (req, res) => {
 
         const total = parseInt(countResult.rows[0].count);
 
+        // Hide secret fields for guests
+        let responseData = result.rows;
+        if (!req.user) {
+            responseData = removeSecretFields(responseData);
+        }
+
         res.json({
             success: true,
-            data: result.rows,
+            data: responseData,
             pagination: {
                 page: validatedPage,
                 limit: validatedLimit,
@@ -248,22 +277,48 @@ router.get('/', async (req, res) => {
 });
 
 // GET property by ID or property_id
-router.get('/:id', async (req, res) => {
+// Uses optionalAuth - guests can access but won't see secret fields
+router.get('/:id', optionalAuth, async (req, res) => {
     try {
         const id = req.params.id;
         let result;
 
+        // Build base query
+        let baseQuery = 'SELECT * FROM properties WHERE ';
+        let params = [];
+
         if (/^\d+$/.test(id)) {
-            result = await pool.query('SELECT * FROM properties WHERE id = $1', [parseInt(id)]);
+            baseQuery += 'id = $1';
+            params = [parseInt(id)];
         } else {
-            result = await pool.query('SELECT * FROM properties WHERE property_id = $1', [id]);
+            baseQuery += 'property_id = $1';
+            params = [id];
         }
+
+        // Apply access restrictions
+        if (!req.user) {
+            // Guest: only published properties
+            baseQuery += " AND approve_status = 'published'";
+        } else if (req.user.role === 'agent') {
+            // Agent: only their team's properties
+            baseQuery += ' AND agent_team = $2';
+            params.push(req.user.team);
+        }
+        // Admin: no restrictions
+
+        result = await pool.query(baseQuery, params);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, error: 'Property not found' });
         }
 
-        res.json({ success: true, data: result.rows[0] });
+        // Hide secret fields for guests
+        let responseData = result.rows[0];
+        if (!req.user) {
+            responseData = removeSecretFields(responseData);
+        }
+
+        res.json({ success: true, data: responseData });
     } catch (error) {
         console.error(error);
         res.status(500).json({ success: false, error: 'Database error' });
@@ -271,8 +326,8 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/properties
-// TODO: Add authentication middleware to protect this route
-router.post('/', async (req, res) => {
+// Requires authentication - Admin or Agent
+router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) => {
     try {
         const data = req.body;
 
@@ -324,10 +379,25 @@ router.post('/', async (req, res) => {
         ];
 
         // Filter only allowed fields from request
-        const fieldsToInsert = Object.keys(data).filter(key => allowedFields.includes(key));
+        let fieldsToInsert = Object.keys(data).filter(key => allowedFields.includes(key));
 
         if (fieldsToInsert.length === 0) {
             return res.status(400).json({ success: false, error: 'No valid fields provided' });
+        }
+
+        // For agents: force agent_team to their team and approve_status to pending
+        if (req.user.role === 'agent') {
+            data.agent_team = req.user.team;
+            data.approve_status = 'pending';
+            // Ensure these fields are included
+            if (!fieldsToInsert.includes('agent_team')) fieldsToInsert.push('agent_team');
+            if (!fieldsToInsert.includes('approve_status')) fieldsToInsert.push('approve_status');
+        } else if (req.user.role === 'admin') {
+            // Admin can set any status, default to published if not specified
+            if (!data.approve_status) {
+                data.approve_status = 'published';
+                if (!fieldsToInsert.includes('approve_status')) fieldsToInsert.push('approve_status');
+            }
         }
 
         // Helper function to get status code
@@ -430,8 +500,8 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/properties/:id
-// TODO: Add authentication middleware to protect this route
-router.put('/:id', async (req, res) => {
+// Requires authentication - Admin or Agent
+router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res) => {
     try {
         const id = req.params.id;
         const data = req.body;
@@ -441,7 +511,33 @@ router.put('/:id', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Request body is empty' });
         }
 
-        const allowedFields = [
+        // First, get the property to check permissions
+        let selectQuery = 'SELECT * FROM properties WHERE ';
+        let selectParams = [];
+        if (/^\d+$/.test(id)) {
+            selectQuery += 'id = $1';
+            selectParams = [parseInt(id)];
+        } else {
+            selectQuery += 'property_id = $1';
+            selectParams = [id];
+        }
+
+        const propertyResult = await pool.query(selectQuery, selectParams);
+        if (propertyResult.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Property not found' });
+        }
+
+        const property = propertyResult.rows[0];
+
+        // Check permissions using canModifyProperty
+        if (!canModifyProperty(req.user, property)) {
+            return res.status(403).json({
+                success: false,
+                error: 'You do not have permission to modify this property'
+            });
+        }
+
+        let allowedFields = [
             "property_id", "title", "date", "type",
             "status",
             "labels",
@@ -469,8 +565,15 @@ router.put('/:id', async (req, res) => {
             "remarks",
             "slug",
             "images"
-            // Note: created_at and updated_at should not be manually updated
         ];
+
+        // Only admin can change approve_status and agent_team
+        if (req.user.role === 'admin') {
+            allowedFields.push('approve_status');
+        } else {
+            // Agents cannot change agent_team or approve_status
+            allowedFields = allowedFields.filter(f => f !== 'agent_team' && f !== 'approve_status');
+        }
 
         const fieldsToUpdate = Object.keys(data).filter(key => allowedFields.includes(key));
         if (fieldsToUpdate.length === 0) {
@@ -504,10 +607,6 @@ router.put('/:id', async (req, res) => {
 
         const result = await pool.query(query, params);
 
-        if (result.rows.length === 0) {
-            return res.status(404).json({ success: false, error: 'Property not found' });
-        }
-
         res.json({ success: true, data: result.rows[0], message: 'Property updated successfully' });
 
     } catch (error) {
@@ -521,10 +620,36 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/properties/:id
-// TODO: Add authentication middleware to protect this route
-router.delete('/:id', async (req, res) => {
+// Requires authentication - Admin or Agent
+router.delete('/:id', authenticate, authorize(['admin', 'agent']), async (req, res) => {
     try {
         const id = req.params.id;
+
+        // First, get the property to check permissions
+        let selectQuery = 'SELECT * FROM properties WHERE ';
+        let selectParams = [];
+        if (/^\d+$/.test(id)) {
+            selectQuery += 'id = $1';
+            selectParams = [parseInt(id)];
+        } else {
+            selectQuery += 'property_id = $1';
+            selectParams = [id];
+        }
+
+        const propertyResult = await pool.query(selectQuery, selectParams);
+        if (propertyResult.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Property not found' });
+        }
+
+        const property = propertyResult.rows[0];
+
+        // Check permissions using canModifyProperty
+        if (!canModifyProperty(req.user, property)) {
+            return res.status(403).json({
+                success: false,
+                error: 'You do not have permission to delete this property'
+            });
+        }
 
         let query = '';
         let params = [];
@@ -539,13 +664,6 @@ router.delete('/:id', async (req, res) => {
         }
 
         const result = await pool.query(query, params);
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                error: 'Property not found'
-            });
-        }
 
         res.json({
             success: true,
