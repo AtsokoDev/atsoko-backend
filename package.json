@@ -1,11 +1,13 @@
 {
-  "name": "backend-api-demo",
+  "name": "backend-api-atsoko",
   "version": "1.0.0",
   "description": "Demo Backend API with Node.js",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "dev:admin": "cd admin-panel && npm run dev",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:admin\"",
     "create-admin": "node scripts/create-admin.js"
   },
   "keywords": [
@@ -29,6 +31,7 @@
     "sharp": "^0.33.1"
   },
   "devDependencies": {
+    "concurrently": "^9.2.1",
     "nodemon": "^3.0.1"
   }
 }
