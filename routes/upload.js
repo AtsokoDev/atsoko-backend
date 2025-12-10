@@ -6,6 +6,57 @@ const path = require('path');
 const pool = require('../config/database');
 const { upload, handleUploadError } = require('../middleware/upload');
 
+// Watermark configuration
+const WATERMARK_PATH = path.join(__dirname, '../public/watermark/watermark.png');
+const WATERMARK_PERCENT = 60;       // Watermark width as % of image width (1-100)
+const WATERMARK_MARGIN_RIGHT = 20;  // Distance from right edge (pixels)
+const WATERMARK_MARGIN_BOTTOM = 120; // Distance from bottom edge (pixels) - ยิ่งเยอะยิ่งเลื่อนขึ้น
+
+// Helper function to apply watermark to image
+const applyWatermark = async (imageBuffer) => {
+    try {
+        // First resize the main image
+        const resizedImage = await sharp(imageBuffer)
+            .resize(2000, null, { withoutEnlargement: true })
+            .toBuffer();
+
+        // Get resized image metadata for positioning
+        const metadata = await sharp(resizedImage).metadata();
+
+        // Calculate watermark width based on percentage of image width
+        const watermarkWidth = Math.floor(metadata.width * (WATERMARK_PERCENT / 100));
+
+        // Prepare watermark - resize based on image width
+        const watermark = await sharp(WATERMARK_PATH)
+            .resize(watermarkWidth, null)
+            .toBuffer();
+
+        // Get watermark dimensions
+        const watermarkMeta = await sharp(watermark).metadata();
+
+        // Calculate position (bottom-right with margin)
+        const left = metadata.width - watermarkMeta.width - WATERMARK_MARGIN_RIGHT;
+        const top = metadata.height - watermarkMeta.height - WATERMARK_MARGIN_BOTTOM;
+
+        // Apply watermark and convert to WebP
+        return await sharp(resizedImage)
+            .composite([{
+                input: watermark,
+                left: Math.max(0, left),
+                top: Math.max(0, top)
+            }])
+            .webp({ quality: 80 })
+            .toBuffer();
+    } catch (error) {
+        console.error('Watermark error:', error);
+        // Fallback: return image without watermark if watermark fails
+        return await sharp(imageBuffer)
+            .resize(2000, null, { withoutEnlargement: true })
+            .webp({ quality: 80 })
+            .toBuffer();
+    }
+};
+
 // Helper function to get status code from property status
 const getStatusCode = (status) => {
     if (!status) return 'R'; // Default to 'R' if no status
@@ -53,7 +104,7 @@ router.post('/image', upload.single('image'), handleUploadError, async (req, res
 
         // Get property from database to check existence, get status and current images
         const result = await pool.query(
-            'SELECT id, status, images FROM properties WHERE id = $1',
+            'SELECT id, property_id, status, images FROM properties WHERE id = $1',
             [parseInt(property_id)]
         );
 
@@ -65,6 +116,7 @@ router.post('/image', upload.single('image'), handleUploadError, async (req, res
         }
 
         const property = result.rows[0];
+        const actualPropertyId = property.property_id; // e.g. AT2059R
         const statusCode = getStatusCode(property.status);
         const currentImages = property.images || [];
 
@@ -72,7 +124,8 @@ router.post('/image', upload.single('image'), handleUploadError, async (req, res
         const uploadDir = await ensureUploadDir();
 
         // Find next available image number by checking existing files
-        const prefix = `AT${property_id}${statusCode}_`;
+        // Use the actual property_id (AT2059R) for filename prefix
+        const prefix = `${actualPropertyId}_`;
         const existingFiles = await fs.readdir(uploadDir);
         const relatedFiles = existingFiles.filter(f => f.startsWith(prefix));
 
@@ -89,13 +142,9 @@ router.post('/image', upload.single('image'), handleUploadError, async (req, res
         const filename = `${prefix}${nextNumber}.webp`;
         const filePath = path.join(uploadDir, filename);
 
-        // Convert and save image as WebP
-        await sharp(req.file.buffer)
-            .resize(2000, null, {
-                withoutEnlargement: true
-            })
-            .webp({ quality: 80 })
-            .toFile(filePath);
+        // Apply watermark and save image as WebP
+        const processedImage = await applyWatermark(req.file.buffer);
+        await fs.writeFile(filePath, processedImage);
 
         // Update database: add new filename to images array if not already present
         if (!currentImages.includes(filename)) {
@@ -149,7 +198,7 @@ router.post('/images', upload.array('images', 20), handleUploadError, async (req
 
         // Get property from database to check existence, get status and current images
         const result = await pool.query(
-            'SELECT id, status, images FROM properties WHERE id = $1',
+            'SELECT id, property_id, status, images FROM properties WHERE id = $1',
             [parseInt(property_id)]
         );
 
@@ -161,6 +210,7 @@ router.post('/images', upload.array('images', 20), handleUploadError, async (req
         }
 
         const property = result.rows[0];
+        const actualPropertyId = property.property_id; // e.g. AT2059R
         const statusCode = getStatusCode(property.status);
         const currentImages = property.images || [];
 
@@ -168,7 +218,8 @@ router.post('/images', upload.array('images', 20), handleUploadError, async (req
         const uploadDir = await ensureUploadDir();
 
         // Find next available image number
-        const prefix = `AT${property_id}${statusCode}_`;
+        // Use the actual property_id (AT2059R) for filename prefix
+        const prefix = `${actualPropertyId}_`;
         const existingFiles = await fs.readdir(uploadDir);
         const relatedFiles = existingFiles.filter(f => f.startsWith(prefix));
 
@@ -187,12 +238,9 @@ router.post('/images', upload.array('images', 20), handleUploadError, async (req
             const filename = `${prefix}${nextNumber}.webp`;
             const filePath = path.join(uploadDir, filename);
 
-            await sharp(file.buffer)
-                .resize(2000, null, {
-                    withoutEnlargement: true
-                })
-                .webp({ quality: 80 })
-                .toFile(filePath);
+            // Apply watermark and save image as WebP
+            const processedImage = await applyWatermark(file.buffer);
+            await fs.writeFile(filePath, processedImage);
 
             uploadedFiles.push({
                 filename: filename,

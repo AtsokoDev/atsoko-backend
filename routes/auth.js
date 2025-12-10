@@ -445,4 +445,56 @@ router.put('/users/:id', authenticate, authorize(['admin']), async (req, res) =>
     }
 });
 
+/**
+ * PUT /api/auth/users/:id/reset-password
+ * Reset user password (Admin only)
+ */
+router.put('/users/:id/reset-password', authenticate, authorize(['admin']), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { password } = req.body;
+
+        // Validate password
+        if (!password || password.length < 6) {
+            return res.status(400).json({
+                success: false,
+                error: 'Password must be at least 6 characters'
+            });
+        }
+
+        // Check if user exists
+        const userCheck = await pool.query('SELECT id FROM users WHERE id = $1', [id]);
+        if (userCheck.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'User not found'
+            });
+        }
+
+        // Hash new password
+        const salt = await bcrypt.genSalt(10);
+        const passwordHash = await bcrypt.hash(password, salt);
+
+        // Update password
+        await pool.query(
+            'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+            [passwordHash, id]
+        );
+
+        // Revoke all refresh tokens for this user (force re-login)
+        await pool.query('DELETE FROM refresh_tokens WHERE user_id = $1', [id]);
+
+        res.json({
+            success: true,
+            message: 'Password reset successfully. User will need to login again.'
+        });
+    } catch (error) {
+        console.error('Reset password error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to reset password'
+        });
+    }
+});
+
 module.exports = router;
