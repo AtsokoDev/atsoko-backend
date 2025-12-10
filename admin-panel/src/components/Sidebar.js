@@ -3,42 +3,43 @@
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/context/LanguageContext';
 import styles from './Sidebar.module.css';
 
 const menuItems = [
     {
         href: '/dashboard',
-        label: 'Dashboard',
+        key: 'menu.dashboard',
         icon: '📊',
         roles: ['admin', 'agent']
     },
     {
         href: '/properties',
-        label: 'Properties',
+        key: 'menu.properties',
         icon: '🏭',
         roles: ['admin', 'agent']
     },
     {
         href: '/users',
-        label: 'Users',
+        key: 'menu.users',
         icon: '👥',
         roles: ['admin']
     },
     {
         href: '/tips',
-        label: 'Tips/Articles',
+        key: 'menu.tips',
         icon: '📝',
         roles: ['admin']
     },
     {
         href: '/faq',
-        label: 'FAQ',
+        key: 'menu.faq',
         icon: '❓',
         roles: ['admin']
     },
     {
         href: '/contacts',
-        label: 'Contact Messages',
+        key: 'menu.contacts',
         icon: '✉️',
         roles: ['admin']
     }
@@ -47,6 +48,7 @@ const menuItems = [
 export default function Sidebar() {
     const pathname = usePathname();
     const { user } = useAuth();
+    const { t } = useLanguage();
 
     const filteredItems = menuItems.filter(item =>
         item.roles.includes(user?.role)
@@ -66,7 +68,7 @@ export default function Sidebar() {
                         className={`${styles.navItem} ${pathname === item.href || pathname.startsWith(item.href + '/') ? styles.active : ''}`}
                     >
                         <span className={styles.icon}>{item.icon}</span>
-                        <span className={styles.label}>{item.label}</span>
+                        <span className={styles.label}>{t(item.key)}</span>
                     </Link>
                 ))}
             </nav>

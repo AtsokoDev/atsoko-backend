@@ -1,5 +1,6 @@
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
+import { LanguageProvider } from '@/context/LanguageContext';
 
 export const metadata = {
   title: 'Admin Panel | Thai Industrial Property',
@@ -17,7 +18,9 @@ export default function RootLayout({ children }) {
       </head>
       <body>
         <AuthProvider>
-          {children}
+          <LanguageProvider>
+            {children}
+          </LanguageProvider>
         </AuthProvider>
       </body>
     </html>

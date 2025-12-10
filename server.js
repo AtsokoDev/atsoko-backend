@@ -18,6 +18,7 @@ const tipsRouter = require('./routes/tips');
 const faqRouter = require('./routes/faq');
 const contactRouter = require('./routes/contact');
 const authRouter = require('./routes/auth');
+const optionsRouter = require('./routes/options');
 
 app.use('/api/properties', propertiesRouter);
 app.use('/api/stats', statsRouter);
@@ -26,6 +27,7 @@ app.use('/api/tips', tipsRouter);
 app.use('/api/faq', faqRouter);
 app.use('/api/contact', contactRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/options', optionsRouter);
 
 // Serve static images
 app.use('/images', express.static('public/images'));

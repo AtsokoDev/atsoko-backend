@@ -70,3 +70,32 @@
         left: 0;
     }
 }
+
+.languageSwitcher {
+    display: flex;
+    gap: 8px;
+    margin-right: 16px;
+}
+
+.langBtn {
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid var(--gray-200);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--gray-500);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.langBtn:hover {
+    background: var(--gray-100);
+    color: var(--gray-700);
+}
+
+.activeLang {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}

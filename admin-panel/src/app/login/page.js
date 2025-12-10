@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/context/LanguageContext';
 import styles from './login.module.css';
 
 export default function LoginPage() {
@@ -12,6 +13,7 @@ export default function LoginPage() {
     const [loading, setLoading] = useState(false);
 
     const { login, isAuthenticated, loading: authLoading } = useAuth();
+    const { t } = useLanguage();
     const router = useRouter();
 
     useEffect(() => {
@@ -53,8 +55,8 @@ export default function LoginPage() {
                     <img src="/logo.png" alt="Thai Industrial Property" />
                 </div>
 
-                <h1 className={styles.title}>Admin Panel</h1>
-                <p className={styles.subtitle}>Sign in to continue</p>
+                <h1 className={styles.title}>{t('login.title')}</h1>
+                <p className={styles.subtitle}>{t('login.subtitle')}</p>
 
                 <form onSubmit={handleSubmit} className={styles.form}>
                     {error && (
@@ -64,26 +66,26 @@ export default function LoginPage() {
                     )}
 
                     <div className="form-group">
-                        <label className="form-label">Email</label>
+                        <label className="form-label">{t('login.email')}</label>
                         <input
                             type="email"
                             className="form-input"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            placeholder="Enter your email"
+                            placeholder={t('login.email_placeholder')}
                             required
                             autoFocus
                         />
                     </div>
 
                     <div className="form-group">
-                        <label className="form-label">Password</label>
+                        <label className="form-label">{t('login.password')}</label>
                         <input
                             type="password"
                             className="form-input"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            placeholder="Enter your password"
+                            placeholder={t('login.password_placeholder')}
                             required
                         />
                     </div>
@@ -96,10 +98,10 @@ export default function LoginPage() {
                         {loading ? (
                             <>
                                 <div className="spinner" style={{ width: 16, height: 16 }}></div>
-                                Signing in...
+                                {t('login.signing_in')}
                             </>
                         ) : (
-                            'Sign In'
+                            t('login.sign_in')
                         )}
                     </button>
                 </form>

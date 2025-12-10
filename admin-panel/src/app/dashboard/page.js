@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/context/LanguageContext';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 import { statsApi, propertiesApi } from '@/lib/api';
@@ -10,6 +11,7 @@ import styles from './dashboard.module.css';
 
 export default function DashboardPage() {
     const { isAuthenticated, loading: authLoading, user } = useAuth();
+    const { t } = useLanguage();
     const router = useRouter();
     const [stats, setStats] = useState(null);
     const [recentProperties, setRecentProperties] = useState([]);
@@ -64,7 +66,7 @@ export default function DashboardPage() {
             <main className="main-content">
                 <div className="page-content">
                     <div className="page-header">
-                        <h1 className="page-title">Dashboard</h1>
+                        <h1 className="page-title">{t('dashboard.title')}</h1>
                         <p className={styles.welcome}>
                             Welcome back, <strong>{user?.name || user?.email}</strong>!
                         </p>
@@ -83,7 +85,10 @@ export default function DashboardPage() {
                                     <div className="stat-card-value">
                                         {stats?.overview?.total_properties || 0}
                                     </div>
-                                    <div className="stat-card-label">Total Properties</div>
+                                    <div className="stat-card-value">
+                                        {stats?.overview?.total_properties || 0}
+                                    </div>
+                                    <div className="stat-card-label">{t('dashboard.total_properties')}</div>
                                 </div>
 
                                 <div className="stat-card">
@@ -91,7 +96,7 @@ export default function DashboardPage() {
                                     <div className="stat-card-value">
                                         {stats?.overview?.total_types || 0}
                                     </div>
-                                    <div className="stat-card-label">Property Types</div>
+                                    <div className="stat-card-label">{t('property.type')}</div>
                                 </div>
 
                                 <div className="stat-card">
@@ -99,7 +104,7 @@ export default function DashboardPage() {
                                     <div className="stat-card-value">
                                         {stats?.overview?.total_provinces || 0}
                                     </div>
-                                    <div className="stat-card-label">Provinces</div>
+                                    <div className="stat-card-label">{t('property.province')}</div>
                                 </div>
 
                                 <div className="stat-card">
@@ -107,7 +112,7 @@ export default function DashboardPage() {
                                     <div className="stat-card-value">
                                         ฿{Number(stats?.overview?.avg_price || 0).toLocaleString()}
                                     </div>
-                                    <div className="stat-card-label">Avg. Price</div>
+                                    <div className="stat-card-label">{t('dashboard.avg_price')}</div>
                                 </div>
                             </div>
 
@@ -115,7 +120,7 @@ export default function DashboardPage() {
                             <div className="grid grid-2 mb-lg">
                                 <div className="card">
                                     <div className="card-header">
-                                        <h3>Properties by Type</h3>
+                                        <h3>{t('dashboard.properties_by_type')}</h3>
                                     </div>
                                     <div className="card-body">
                                         {stats?.by_type?.map((item, index) => (
@@ -129,7 +134,7 @@ export default function DashboardPage() {
 
                                 <div className="card">
                                     <div className="card-header">
-                                        <h3>Top Provinces</h3>
+                                        <h3>{t('dashboard.top_provinces')}</h3>
                                     </div>
                                     <div className="card-body">
                                         {stats?.by_province?.slice(0, 5).map((item, index) => (
@@ -145,20 +150,20 @@ export default function DashboardPage() {
                             {/* Recent Properties */}
                             <div className="card">
                                 <div className="card-header">
-                                    <h3>Recent Properties</h3>
+                                    <h3>{t('dashboard.recent')}</h3>
                                     <a href="/properties" className="btn btn-sm btn-secondary">
-                                        View All →
+                                        {t('common.view_all')} →
                                     </a>
                                 </div>
                                 <div className="table-container">
                                     <table className="table">
                                         <thead>
                                             <tr>
-                                                <th>ID</th>
-                                                <th>Title</th>
-                                                <th>Type</th>
-                                                <th>Status</th>
-                                                <th>Price</th>
+                                                <th>{t('common.id')}</th>
+                                                <th>{t('property.title')}</th>
+                                                <th>{t('property.type')}</th>
+                                                <th>{t('property.status')}</th>
+                                                <th>{t('property.price')}</th>
                                             </tr>
                                         </thead>
                                         <tbody>

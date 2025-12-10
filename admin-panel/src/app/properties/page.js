@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/context/LanguageContext';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 import { propertiesApi } from '@/lib/api';
@@ -11,6 +12,7 @@ import styles from './properties.module.css';
 
 export default function PropertiesPage() {
     const { isAuthenticated, loading: authLoading, user } = useAuth();
+    const { t } = useLanguage();
     const router = useRouter();
 
     const [properties, setProperties] = useState([]);
@@ -75,7 +77,7 @@ export default function PropertiesPage() {
         } catch (error) {
             console.error('Error deleting property:', error);
             if (error.response?.status === 403) {
-                alert('คุณไม่มีสิทธิ์ลบ Property\n\nกรุณาติดต่อ Admin เพื่อดำเนินการลบ');
+                alert('You do not have permission to delete.\n\nPlease contact Admin.');
             } else {
                 alert(error.response?.data?.error || 'Failed to delete property');
             }
@@ -105,9 +107,9 @@ export default function PropertiesPage() {
             <main className="main-content">
                 <div className="page-content">
                     <div className="page-header">
-                        <h1 className="page-title">Properties</h1>
+                        <h1 className="page-title">{t('property_list.title')}</h1>
                         <Link href="/properties/new" className="btn btn-primary">
-                            + Add Property
+                            + {t('property_list.add_new')}
                         </Link>
                     </div>
 
@@ -116,7 +118,7 @@ export default function PropertiesPage() {
                         <input
                             type="text"
                             className="form-input search-input"
-                            placeholder="Search by title..."
+                            placeholder={t('common.search')}
                             value={filters.keyword}
                             onChange={(e) => handleFilterChange('keyword', e.target.value)}
                         />
@@ -125,7 +127,7 @@ export default function PropertiesPage() {
                             value={filters.status}
                             onChange={(e) => handleFilterChange('status', e.target.value)}
                         >
-                            <option value="">All Status</option>
+                            <option value="">{t('property_list.all_statuses')}</option>
                             <option value="rent">For Rent</option>
                             <option value="sale">For Sale</option>
                         </select>
@@ -134,7 +136,7 @@ export default function PropertiesPage() {
                             value={filters.type}
                             onChange={(e) => handleFilterChange('type', e.target.value)}
                         >
-                            <option value="">All Types</option>
+                            <option value="">{t('property_list.all_types')}</option>
                             <option value="warehouse">Warehouse</option>
                             <option value="factory">Factory</option>
                         </select>
@@ -147,7 +149,7 @@ export default function PropertiesPage() {
                         ) : properties.length === 0 ? (
                             <div className="empty-state">
                                 <div className="empty-state-icon">🏭</div>
-                                <p>No properties found</p>
+                                <p>{t('common.no_data')}</p>
                             </div>
                         ) : (
                             <>
@@ -155,14 +157,14 @@ export default function PropertiesPage() {
                                     <table className="table">
                                         <thead>
                                             <tr>
-                                                <th>ID</th>
-                                                <th>Title</th>
-                                                <th>Type</th>
-                                                <th>Status</th>
-                                                <th>Price</th>
-                                                <th>Province</th>
-                                                <th>Approve</th>
-                                                <th>Actions</th>
+                                                <th>{t('common.id')}</th>
+                                                <th>{t('property.title')}</th>
+                                                <th>{t('property.type')}</th>
+                                                <th>{t('property.status')}</th>
+                                                <th>{t('property.price')}</th>
+                                                <th>{t('property.province')}</th>
+                                                <th>{t('property.approve_status')}</th>
+                                                <th>{t('common.actions')}</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -208,14 +210,14 @@ export default function PropertiesPage() {
                                                                 href={`/properties/${property.id}`}
                                                                 className="btn btn-sm btn-secondary"
                                                             >
-                                                                Edit
+                                                                {t('common.edit')}
                                                             </Link>
                                                             {user?.role === 'admin' && (
                                                                 <button
                                                                     className="btn btn-sm btn-danger"
                                                                     onClick={() => setDeleteModal({ show: true, property })}
                                                                 >
-                                                                    Delete
+                                                                    {t('common.delete')}
                                                                 </button>
                                                             )}
                                                         </div>
@@ -235,17 +237,17 @@ export default function PropertiesPage() {
                                                 disabled={pagination.page <= 1}
                                                 onClick={() => handlePageChange(pagination.page - 1)}
                                             >
-                                                ← Prev
+                                                ← {t('property_list.prev')}
                                             </button>
                                             <span className="text-sm text-muted">
-                                                Page {pagination.page} of {pagination.pages} ({pagination.total} total)
+                                                {t('property_list.page')} {pagination.page} {t('property_list.of')} {pagination.pages} ({pagination.total} {t('property_list.total')})
                                             </span>
                                             <button
                                                 className="pagination-btn"
                                                 disabled={pagination.page >= pagination.pages}
                                                 onClick={() => handlePageChange(pagination.page + 1)}
                                             >
-                                                Next →
+                                                {t('property_list.next')} →
                                             </button>
                                         </div>
                                     </div>
@@ -261,10 +263,10 @@ export default function PropertiesPage() {
                 <div className="modal-overlay" onClick={() => setDeleteModal({ show: false, property: null })}>
                     <div className="modal" onClick={e => e.stopPropagation()}>
                         <div className="modal-header">
-                            <h3>Confirm Delete</h3>
+                            <h3>{t('property_list.confirm_delete_title')}</h3>
                         </div>
                         <div className="modal-body">
-                            <p>Are you sure you want to delete this property?</p>
+                            <p>{t('property_list.confirm_delete_msg')}</p>
                             <p className="text-muted text-sm mt-md">
                                 <strong>{deleteModal.property?.property_id}</strong> - {deleteModal.property?.title?.substring(0, 50)}
                             </p>
@@ -274,13 +276,13 @@ export default function PropertiesPage() {
                                 className="btn btn-secondary"
                                 onClick={() => setDeleteModal({ show: false, property: null })}
                             >
-                                Cancel
+                                {t('common.cancel')}
                             </button>
                             <button
                                 className="btn btn-danger"
                                 onClick={() => handleDelete(deleteModal.property)}
                             >
-                                Delete
+                                {t('common.delete')}
                             </button>
                         </div>
                     </div>

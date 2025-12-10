@@ -10,6 +10,7 @@ const {
     canModifyProperty,
     removeSecretFields
 } = require('../middleware/auth');
+const { generateTitles } = require('../services/titleGenerator');
 
 // Helper function to validate and sanitize numeric input
 const validateNumber = (value, fieldName) => {
@@ -191,8 +192,9 @@ router.get('/', optionalAuth, async (req, res) => {
             const featuresArray = Array.isArray(features) ? features : features.split(',').map(f => f.trim());
 
             // Use JSONB contains operator (@>) to check if all requested features exist
-            query += ` AND features @> $${paramCount}::jsonb`;
-            countQuery += ` AND features @> $${paramCount}::jsonb`;
+            // Cast text column to jsonb
+            query += ` AND features::jsonb @> $${paramCount}::jsonb`;
+            countQuery += ` AND features::jsonb @> $${paramCount}::jsonb`;
             params.push(JSON.stringify(featuresArray));
             countParams.push(JSON.stringify(featuresArray));
             paramCount++;
@@ -338,8 +340,9 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
             return res.status(400).json({ success: false, error: 'Request body is empty' });
         }
 
-        // Define required fields (property_id is now auto-generated, so not required from user)
-        const requiredFields = ['title', 'type', 'province', 'price', 'size', 'status'];
+        // Define required fields (property_id and titles are auto-generated)
+        // Can use either legacy text fields OR new ID fields for type/status/location
+        const requiredFields = ['type', 'province', 'price', 'size', 'status'];
         const missingFields = requiredFields.filter(field => !data[field]);
 
         if (missingFields.length > 0) {
@@ -361,6 +364,7 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
             "location",
             "price",
             "price_postfix",
+            "price_alternative",
             "size",
             "size_prefix",
             "terms_conditions",
@@ -377,7 +381,14 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
             "land_postfix",
             "remarks",
             "slug",
-            "images"
+            "images",
+            // New multi-language fields
+            "type_id",
+            "status_id",
+            "subdistrict_id",
+            "title_en",
+            "title_th",
+            "title_zh"
         ];
 
         // Filter only allowed fields from request
@@ -465,15 +476,50 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
             propertyId = `AT${nextAvailableId}${statusCode}`;
         }
 
-        // Update with the final property_id
+        // Generate multi-language titles if applicable
+        let generatedTitles = { title_en: null, title_th: null, title_zh: null };
+        try {
+            generatedTitles = await generateTitles({
+                type_id: data.type_id,
+                status_id: data.status_id,
+                subdistrict_id: data.subdistrict_id,
+                size: data.size,
+                property_id: propertyId,
+                // Fallback to legacy text fields
+                type: data.type,
+                status: data.status,
+                province: data.province,
+                district: data.district,
+                sub_district: data.sub_district
+            });
+        } catch (titleError) {
+            console.warn('Title generation failed:', titleError.message);
+            // Continue with null titles if generation fails
+        }
+
+        // Use explicit title if provided, otherwise use generated title or legacy title
+        const finalTitle = data.title || generatedTitles.title_en || `Property ${propertyId}`;
+
+        // Update with the final property_id and generated titles
         const updateQuery = `
             UPDATE properties 
-            SET property_id = $1 
+            SET property_id = $1,
+                title = $3,
+                title_en = $4,
+                title_th = $5,
+                title_zh = $6
             WHERE id = $2 
             RETURNING *
         `;
 
-        const result = await pool.query(updateQuery, [propertyId, newId]);
+        const result = await pool.query(updateQuery, [
+            propertyId,
+            newId,
+            finalTitle,
+            generatedTitles.title_en,
+            generatedTitles.title_th,
+            generatedTitles.title_zh
+        ]);
 
         res.status(201).json({
             success: true,
@@ -567,7 +613,14 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
             "land_postfix",
             "remarks",
             "slug",
-            "images"
+            "images",
+            // New multi-language fields
+            "type_id",
+            "status_id",
+            "subdistrict_id",
+            "title_en",
+            "title_th",
+            "title_zh"
         ];
 
         // Only admin can change approve_status and agent_team
@@ -636,6 +689,43 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
         }
 
         const result = await pool.query(query, params);
+
+        // Check if we need to regenerate titles (if relevant fields changed)
+        const titleRelevantFields = ['type_id', 'status_id', 'subdistrict_id', 'size', 'type', 'status', 'province', 'district', 'sub_district'];
+        const needsTitleRegeneration = fieldsToUpdate.some(f => titleRelevantFields.includes(f));
+
+        if (needsTitleRegeneration) {
+            try {
+                const updatedProperty = result.rows[0];
+                const generatedTitles = await generateTitles({
+                    type_id: updatedProperty.type_id,
+                    status_id: updatedProperty.status_id,
+                    subdistrict_id: updatedProperty.subdistrict_id,
+                    size: updatedProperty.size,
+                    property_id: updatedProperty.property_id,
+                    // Fallback to legacy text fields
+                    type: updatedProperty.type,
+                    status: updatedProperty.status,
+                    province: updatedProperty.province,
+                    district: updatedProperty.district,
+                    sub_district: updatedProperty.sub_district
+                });
+
+                // Update with regenerated titles
+                await pool.query(
+                    'UPDATE properties SET title_en = $1, title_th = $2, title_zh = $3 WHERE id = $4',
+                    [generatedTitles.title_en, generatedTitles.title_th, generatedTitles.title_zh, updatedProperty.id]
+                );
+
+                // Merge regenerated titles into result
+                result.rows[0].title_en = generatedTitles.title_en;
+                result.rows[0].title_th = generatedTitles.title_th;
+                result.rows[0].title_zh = generatedTitles.title_zh;
+            } catch (titleError) {
+                console.warn('Title regeneration failed:', titleError.message);
+                // Continue without regenerating titles
+            }
+        }
 
         // If images were updated, delete removed image files from disk
         if (data.images !== undefined) {

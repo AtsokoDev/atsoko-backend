@@ -193,3 +193,71 @@
 .imageItem:hover img {
     transform: scale(1.05);
 }
+
+/* Title Preview Section */
+.titlePreview {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(168, 85, 247, 0.05));
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-lg);
+    margin-bottom: var(--spacing-lg);
+}
+
+.titlePreview h4 {
+    margin-bottom: var(--spacing-md);
+    color: var(--primary);
+    font-size: 1rem;
+}
+
+.titleGrid {
+    display: grid;
+    gap: var(--spacing-sm);
+}
+
+.titleGrid>div {
+    display: flex;
+    gap: var(--spacing-sm);
+    align-items: flex-start;
+}
+
+.titleGrid label {
+    font-weight: 600;
+    color: var(--text-secondary);
+    min-width: 60px;
+    font-size: 0.875rem;
+}
+
+.titleGrid p {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    line-height: 1.4;
+}
+
+.checkboxGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    max-height: 300px;
+    overflow-y: auto;
+    background: #fff;
+    width: 100%;
+}
+
+.checkboxLabel {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 2px 0;
+}
+
+.checkboxLabel input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}

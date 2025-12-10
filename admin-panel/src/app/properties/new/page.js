@@ -9,7 +9,7 @@ import PropertyForm from '@/components/PropertyForm';
 import { propertiesApi, uploadApi } from '@/lib/api';
 
 export default function NewPropertyPage() {
-    const { isAuthenticated, loading: authLoading } = useAuth();
+    const { isAuthenticated, loading: authLoading, user } = useAuth();
     const router = useRouter();
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
@@ -104,9 +104,11 @@ export default function NewPropertyPage() {
                         </div>
                     )}
 
+
                     <PropertyForm
                         onSubmit={handleSubmit}
                         saving={saving}
+                        isAdmin={user?.role === 'admin'}
                     />
                 </div>
             </main>
