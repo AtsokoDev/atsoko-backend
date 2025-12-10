@@ -1,0 +1,24 @@
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-2xl);
+}
+
+.titleCell {
+    max-width: 250px;
+}
+
+.titleLink {
+    color: var(--gray-800);
+    text-decoration: none;
+}
+
+.titleLink:hover {
+    color: var(--primary);
+}
+
+.actions {
+    display: flex;
+    gap: var(--spacing-xs);
+}

@@ -1,0 +1,36 @@
+.welcome {
+    font-size: 0.875rem;
+    color: var(--gray-500);
+}
+
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-2xl);
+}
+
+.statRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-sm) 0;
+    border-bottom: 1px solid var(--gray-100);
+}
+
+.statRow:last-child {
+    border-bottom: none;
+}
+
+.statLabel {
+    color: var(--gray-600);
+}
+
+.statValue {
+    font-weight: 600;
+    color: var(--gray-900);
+}
+
+.titleCell {
+    max-width: 300px;
+}

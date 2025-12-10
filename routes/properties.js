@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
+const fs = require('fs').promises;
+const path = require('path');
 const {
     authenticate,
     optionalAuth,
@@ -548,6 +550,7 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
             "location",
             "price",
             "price_postfix",
+            "price_alternative",
             "size",
             "size_prefix",
             "terms_conditions",
@@ -586,8 +589,35 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
         let idx = 1;
 
         fieldsToUpdate.forEach(field => {
+            let value = data[field];
+
+            // Special handling for features - ensure it's a proper array
+            if (field === 'features') {
+                if (Array.isArray(value)) {
+                    value = JSON.stringify(value);
+                } else if (typeof value === 'object' && value !== null) {
+                    value = JSON.stringify(Object.values(value));
+                } else if (typeof value === 'string') {
+                    // If it's a comma-separated string, convert to array
+                    value = JSON.stringify(value.split(',').map(f => f.trim()).filter(f => f));
+                } else {
+                    value = '[]';
+                }
+            }
+
+            // Special handling for images - ensure it's a proper array
+            if (field === 'images') {
+                if (Array.isArray(value)) {
+                    value = JSON.stringify(value);
+                } else if (typeof value === 'object' && value !== null) {
+                    value = JSON.stringify(Object.values(value));
+                } else {
+                    value = '[]';
+                }
+            }
+
             setClauses.push(`"${field}" = $${idx}`);
-            params.push(data[field]);
+            params.push(value);
             idx++;
         });
 
@@ -607,6 +637,47 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
 
         const result = await pool.query(query, params);
 
+        // If images were updated, delete removed image files from disk
+        if (data.images !== undefined) {
+            // Ensure oldImages is an array
+            let oldImages = property.images || [];
+            if (!Array.isArray(oldImages)) {
+                if (typeof oldImages === 'object' && oldImages !== null) {
+                    oldImages = Object.values(oldImages);
+                } else if (typeof oldImages === 'string') {
+                    try { oldImages = JSON.parse(oldImages); } catch { oldImages = []; }
+                } else {
+                    oldImages = [];
+                }
+            }
+
+            // Ensure newImages is an array
+            let newImages = data.images || [];
+            if (!Array.isArray(newImages)) {
+                if (typeof newImages === 'object' && newImages !== null) {
+                    newImages = Object.values(newImages);
+                } else {
+                    newImages = [];
+                }
+            }
+
+            // Find images that were removed
+            const removedImages = oldImages.filter(img => !newImages.includes(img));
+
+            // Delete removed image files
+            const uploadDir = path.join(__dirname, '../public/images');
+            for (const filename of removedImages) {
+                try {
+                    const filePath = path.join(uploadDir, filename);
+                    await fs.unlink(filePath);
+                    console.log(`Deleted image file: ${filename}`);
+                } catch (err) {
+                    // File might not exist, just log and continue
+                    console.warn(`Could not delete image file: ${filename}`, err.message);
+                }
+            }
+        }
+
         res.json({ success: true, data: result.rows[0], message: 'Property updated successfully' });
 
     } catch (error) {
@@ -620,8 +691,8 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
 });
 
 // DELETE /api/properties/:id
-// Requires authentication - Admin or Agent
-router.delete('/:id', authenticate, authorize(['admin', 'agent']), async (req, res) => {
+// Requires authentication - Admin only
+router.delete('/:id', authenticate, authorize(['admin']), async (req, res) => {
     try {
         const id = req.params.id;
 
