@@ -10,12 +10,10 @@ public/
 Frontend_TEST/
 
 # Ignore large data files
-*.csv
 image-mapping.json
 
-# Ignore large data files
+# Ignore database dumps
 /database-dump
-/scripts
 
 # Deployment
 logs/
