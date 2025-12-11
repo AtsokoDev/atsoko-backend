@@ -55,15 +55,20 @@ echo ""
 
 # Run schema migration
 echo "Running schema migration..."
-SCHEMA_FILE="../database/schema.sql"
+SCHEMA_DIR="../database"
+SCHEMAS=("schema.sql" "master-schema.sql" "auth-schema.sql")
 
-if [ -f "$SCHEMA_FILE" ]; then
-    PGPASSWORD=$DB_PASSWORD psql -U $DB_USER -d $DB_NAME -f $SCHEMA_FILE
-    echo "✅ Schema created successfully!"
-else
-    echo "⚠️  Schema file not found at $SCHEMA_FILE"
-    echo "   You'll need to run it manually later."
-fi
+for SCHEMA in "${SCHEMAS[@]}"; do
+    SCHEMA_FILE="$SCHEMA_DIR/$SCHEMA"
+    if [ -f "$SCHEMA_FILE" ]; then
+        echo "--> Running $SCHEMA..."
+        PGPASSWORD=$DB_PASSWORD psql -U $DB_USER -d $DB_NAME -f "$SCHEMA_FILE"
+        echo "✅ $SCHEMA executed successfully!"
+    else
+        echo "⚠️  Schema file not found at $SCHEMA_FILE"
+        echo "   You'll need to run it manually later."
+    fi
+done
 
 echo ""
 echo "================================"

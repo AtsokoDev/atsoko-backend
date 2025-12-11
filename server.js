@@ -56,6 +56,5 @@ app.listen(PORT, () => {
   console.log(`\n🚀 Server is running!`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   console.log(`📦 Backend API:   http://localhost:${PORT}`);
-  console.log(`🖥️  Admin Panel:   http://localhost:3001`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 });
