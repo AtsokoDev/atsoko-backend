@@ -1,0 +1,342 @@
+EN_text,TH_text,ZH-Text,Field
+Warehouse,คลังสินค้า,仓库,Type1
+Factory,โรงงาน,工厂,Type2
+For Rent,ให้เช่า,出租,Status1
+For Sale,ขาย,出售,Status2
+Purple zone,โซนสีม่วง,紫色区域,Labels1
+Industrial estate zone,เขตนิคมอุตสาหกรรม,工业园区,Labels2
+Free-trade zone,เขตการค้าเสรี,自由贸易区,Labels3
+Thailand,ประเทศไทย,泰国,Country1
+Bangkok,กรุงเทพฯ,曼谷,Province1
+Samut Prakan,สมุทรปราการ,北榄府,Province2
+Chon Buri,ชลบุรี,春武里府,Province3
+Chachoengsao,ฉะเชิงเทรา,查柳寮,Province4
+Samut Sakhon,สมุทรสาคร,萨穆特萨空,Province5
+Rayong,ระยอง,罗勇府,Province6
+Pathum Thani,ปทุมธานี,巴吞他尼,Province7
+Nonthaburi,นนทบุรี,暖武里府,Province8
+Ayutthaya,อยุธยา,阿瑜陀耶,Province9
+Nakhon Pathom,นครปฐม,那空巴吞,Province10
+Saphan Sung,สาพันซุง,萨潘·宋,District1
+Lat Krabang,ลาดกระบัง,拉卡邦,District2
+Bang Bo,บางบ่อ,邦博,District3
+Bang Phli,บังพลี,邦普利,District4
+Phra Pradaeng,พระประแดง,帕巴登,District5
+Mueang Samut Prakan,เมืองสมุทรปราการ,北榄府,District6
+Si Racha,ศรีราชา,是拉差,District7
+Phan Thong,พันทอง,潘通,District8
+Bang Sao Thong,บางเสาทอง,邦沙通,District9
+Khlong Toei,คลองเตย,孔堤,District10
+Prawet,ประเวศ,普拉维特,District11
+Bang Na,บางนา,方娜,District12
+Ban Bueng,บ้านบึง,班布恩,District13
+Phra Khanong,พระโขนง,帕卡侬,District14
+Bang Pakong,บางปะกง,邦巴功,District15
+Suan Luang,สวนหลวง,苏安銮,District16
+Phra Samut Chedi,พระสมุทรเจดีย์,帕萨穆特佛塔,District17
+Plaeng Yao,แปลงยาว,普兰耀,District18
+Mueang Samut Sakhon,เมืองสมุทรสาคร,萨穆特沙空,District19
+Phanat Nikhom,พนัสนิคม,帕纳特·尼孔,District20
+Nong Chok,หนองจอก,农卓,District21
+Bang Lamung,บางละมุง,邦拉蒙,District22
+Mueang Chon Buri,เมืองชลบุรี,春武里府,District23
+Pluak Daeng,พลวกแดง,普鲁克·丹,District24
+Wang Thonglang,วังทองหลาง,王通朗,District25
+Mueang Rayong,เมืองระยอง,罗勇府,District26
+Bang Nam Priao,บางน้ำเปรี้ยว,邦南普里奥,District27
+Min Buri,มีนบุรี,敏武里府,District28
+Bang Kapi,บางกะปิ,邦卡皮,District29
+Nong Yai,น้องใหญ่,农艾,District30
+Phanom Sarakham,พนมสารคาม,帕侬·沙拉堪,District31
+Khan Na Yao,ข่าน นา ยาโอ,汗那瑶,District32
+Ban Pho,บ้านโพธิ์,Ban Pho,District33
+Bo Thong,บ่อทอง,波通,District34
+Ban Chang,บ้านฉาง,班昌,District35
+Lam Luk Ka,ลัมลุกกะ,林禄嘉,District36
+Bang Khen,บางเขน,邦肯,District37
+Lat Lum Kaeo,ลาดหลุมแก้ว,Lat Lum Kaeo,District38
+Sai Mai,ไซไม,赛迈,District39
+Khlong Luang,คลองหลวง,空銮,District40
+Bang Bua Thong,บางบัวทอง,邦布阿通,District41
+Bang Yai,บางใหญ่,邦艾,District42
+Sai Noi,ไทรน้อย,赛诺伊,District43
+Mueang Pathum Thani,เมืองปทุมธานี,巴吞他尼府,District44
+Pak Kret,ปากเกร็ด,包克雷特,District45
+Nikhom Phatthana,นิคมพัฒนา,尼空·帕塔纳,District46
+Mueang Nonthaburi,เมืองนนทบุรี,暖武里府,District47
+Khlong Sam Wa,คลองสามวา,克隆萨姆瓦,District48
+Bang Pa-in,บางปะอิน,邦巴茵,District49
+Thanyaburi,ธัญบุรี,塔尼布里,District50
+Ban Khai,บ้านค่าย,班凯,District51
+Krathum Baen,กระทุ่มแบน,克拉图姆·巴恩,District52
+Sam Phran,สามพราน,萨姆·普兰,District53
+Wang Noi,หวังน้อย,王诺伊,District54
+Bang Len,บางเลน,邦伦,District55
+Ban Phaeo,บ้านแพ้ว,班菲奥,District56
+Bang Khun Thian,บางขุนเทียน,邦坤天,District57
+Uthai,อุทัย,乌泰,District58
+Bang Sai,บางสาย,邦赛,District59
+Bueng Kum,บึงกุ่ม,汶昆,District60
+Lat Phrao,ลาดพร้าว,拉特帕罗,District61
+Mueang Chachoengsao,เมืองฉะเชิงเทรา,北柳府,District62
+Lak Si,หลักสี่,叻西,District63
+Chatuchak,จตุจักร,乍都乍周末店,District64
+Don Mueang,ดอนเมือง,廊曼,District65
+Bang Kruai,บางเกรีย,邦克鲁艾,District66
+Phra Nakhon Si Ayutthaya,พระนครศรีอยุธยา,帕那空西阿瑜陀耶,District67
+Saphan Sung,สาพันซุง,萨潘·宋,Sub Ditstrict1
+Khlong Song Ton Nun,คลองสองต้นนุ่น,空颂通努,Sub Ditstrict2
+Bang Phriang,บางเพรียง,邦普良,Sub Ditstrict3
+Lat Krabang,ลาดกระบัง,拉卡邦,Sub Ditstrict4
+Racha Thewa,ราชาเทวะ,拉查·特瓦,Sub Ditstrict5
+Samrong Klang,สำโรงกลาง,巴生三荣,Sub Ditstrict6
+Samrong Tai,สำโรงใต้,三荣泰,Sub Ditstrict7
+Thai Ban,ไทยบัน,泰国禁令,Sub Ditstrict8
+Lam Prathew,ลำประทิว,林普拉修,Sub Ditstrict9
+Bo Win,บ่อวิน,博温,Sub Ditstrict10
+Surasak,สุรศักดิ์,苏拉萨克,Sub Ditstrict11
+Nong Kham,หนองขาม,农坎,Sub Ditstrict12
+Phan Thong,พันทอง,潘通,Sub Ditstrict13
+Bang Sao Thong,บางเสาทอง,邦沙通,Sub Ditstrict14
+Phra Khanong,พระโขนง,帕卡侬,Sub Ditstrict15
+Prawet,ประเวศ,普拉维特,Sub Ditstrict16
+Phraek Sa Mai,แพรกษาใหม่,帕雷克萨迈,Sub Ditstrict17
+Bang Kaeo,บางแก้ว,邦卡奥,Sub Ditstrict18
+Phraeksa,แพรกษา,帕雷克萨,Sub Ditstrict19
+Bang Na,บางนา,方娜,Sub Ditstrict20
+Bang Phli Yai,บางพลีใหญ่,邦普利亚伊,Sub Ditstrict21
+Nong Bon Daeng,หนองบอนแดง,农本丹,Sub Ditstrict22
+Bang Pla,บางปลา,邦普拉,Sub Ditstrict23
+Bang Pu Mai,บางปูใหม่,邦普迈,Sub Ditstrict24
+Bang Chak,บางจาก,邦查克,Sub Ditstrict25
+Bang Chalong,บางโฉลง,邦查龙,Sub Ditstrict26
+Thepharak,เธฟารัก,特法拉克,Sub Ditstrict27
+Phimpha,พิมพ์ภา,皮姆帕,Sub Ditstrict28
+Khao Khan Song,ร้านข้าวขาหมู,考汗之歌,Sub Ditstrict29
+Bang Bo,บางบ่อ,邦博,Sub Ditstrict30
+Dok Mai,ดอกไม้,德迈,Sub Ditstrict31
+Suan Luang,สวนหลวง,苏安銮,Sub Ditstrict32
+Thung Suk La,ทุ่งสุขลา,通苏克拉,Sub Ditstrict33
+Bang Phli Noi,บางพลีน้อย,邦普利诺伊,Sub Ditstrict34
+Sisa Chorakhe Yai,ศรีษะจรเข้ใหญ่,西萨·乔拉克·亚伊,Sub Ditstrict35
+Lat Luang,ลาดหลวง,拉銮,Sub Ditstrict36
+Nai Khlong Bang Pla Kot,นายคลองบางปลากด,奈空邦普拉科特,Sub Ditstrict37
+Bang Wua,บางวัว,邦瓦,Sub Ditstrict38
+Bang Yo,บางยอ,邦友,Sub Ditstrict39
+Plaeng Yao,แปลงยาว,普兰耀,Sub Ditstrict40
+Khlong Niyom Yattra,คลองนิยมยาตรา,克隆尼永朝圣之旅,Sub Ditstrict41
+Ban Rakat,บ้านระกาต,班·拉卡特,Sub Ditstrict42
+Phanthai Norasing,พันไท นรสิงห์,潘泰·诺拉辛,Sub Ditstrict43
+Bang Samak,บังสมัคร,邦萨马克,Sub Ditstrict44
+Nong Hiang,น้องเฮียง,农香,Sub Ditstrict45
+Ban Bueng,บ้านบึง,班布恩,Sub Ditstrict46
+Tha Kham,ท่าขาม,塔坎,Sub Ditstrict47
+Bueng,บึง,布恩,Sub Ditstrict48
+Lam Phakchi,ลำผักชี,拉姆·帕克奇,Sub Ditstrict49
+Samrong Nuea,สำโรงเหนือ,萨姆隆努阿,Sub Ditstrict50
+Nong Hong,หนองหงส์,农洪,Sub Ditstrict51
+Bang Phra,บางพระ,邦帕,Sub Ditstrict52
+Hom Sin,หอมซิน,人类罪,Sub Ditstrict53
+Nong Pla Lai,หนองปลาไหล,农普拉莱,Sub Ditstrict54
+Mueang,เมือง,孟,Sub Ditstrict55
+Samrong,สำโรง,萨姆隆,Sub Ditstrict56
+Pluak Daeng,พลวกแดง,普鲁克·丹,Sub Ditstrict57
+Phlabphla,พลับพลา,Phlabphla,Sub Ditstrict58
+Huai Pong,ห้วยโป่ง,怀邦,Sub Ditstrict59
+Sala Daeng,ศาลาแดง,萨拉丹,Sub Ditstrict60
+Na Pradu,นาประดู่,纳普拉杜,Sub Ditstrict61
+Don Hua Lo,ดอนหัวโหล,东华罗,Sub Ditstrict62
+Pak Nam,ปากน้ำ,北南,Sub Ditstrict63
+Min Buri,มีนบุรี,敏武里府,Sub Ditstrict64
+Khlong Chan,คลองจั่น,克隆昌,Sub Ditstrict65
+Saen Saep,แสนแสบ,Saen Saep,Sub Ditstrict66
+Nong Yai,น้องใหญ่,农艾,Sub Ditstrict67
+Khlong Dan,คลองด่าน,空丹,Sub Ditstrict68
+Ban Kao,บ้านเก่า,班考,Sub Ditstrict69
+Nong Kakha,น้องกะข่า,农卡卡,Sub Ditstrict70
+Tha Sa-An,ท่าสะอาน,塔萨安,Sub Ditstrict71
+Nong Irun,น้องอิรุณ,农伊伦,Sub Ditstrict72
+Nong Prue,หนองปรือ,农普鲁,Sub Ditstrict73
+Ban Khlong Suan,บ้านคลองสวน,班克隆苏安,Sub Ditstrict74
+Khlong Chaokhunsing,คลองเจ้าคุณสิงห์,昭坤辛空,Sub Ditstrict75
+Ko Khanun,โค ขนุน,哥卡努,Sub Ditstrict76
+Ta Sit,ตา สิท,塔西,Sub Ditstrict77
+Ram Inthra,รามอินทรา,拉姆·因特拉,Sub Ditstrict78
+Bang Lamung,บางละมุง,邦拉蒙,Sub Ditstrict79
+Sanam Chan,สนามจันทร์,萨南·昌,Sub Ditstrict80
+Bo Kwang Thong,บ่อกวางทอง,波光通,Sub Ditstrict81
+Sam Nak Thon,สำนักสงฆ์,萨姆纳克通,Sub Ditstrict82
+Nong Tin Nok,น้องทินนก,农丁诺,Sub Ditstrict83
+Khlong Suan,คลองสวน,空苏安,Sub Ditstrict84
+Khan Na Yao,ข่าน นา ยาโอ,汗那瑶,Sub Ditstrict85
+Nong Ri,น้องรี,农日,Sub Ditstrict86
+Nong Samsak,น้องสามสัก,农三萨克,Sub Ditstrict87
+Nong Tamlueng,น้องตำลึง,农塔伦,Sub Ditstrict88
+Map Yang Phon,มาบยางพร,杨峰地图,Sub Ditstrict89
+Lat Sawai,ลาดสวาย,拉特·萨瓦伊,Sub Ditstrict90
+Bueng Kham Phroi,บึงคำพร้อย,汶坎普罗,Sub Ditstrict91
+Bung Thong Lang,บุ่งทองหลาง,邦通朗,Sub Ditstrict92
+Lam Luk Ka,ลัมลุกกะ,林禄嘉,Sub Ditstrict93
+Thai Ban Mai,ไทยบ้านใหม่,泰国班迈,Sub Ditstrict94
+Tha Raeng,ท่าแร้ง,塔朗,Sub Ditstrict95
+Na Mai,นาไหม,娜迈,Sub Ditstrict96
+Sai Mai,ไซไม,赛迈,Sub Ditstrict97
+Khlong Thanon,คลองถนน,空塔农,Sub Ditstrict98
+Khlong Chet,คลองเจษฎ์,克隆切特,Sub Ditstrict99
+Phimonrat,พิมลรัตน์,菲蒙拉特,Sub Ditstrict100
+Bang Muang,บางเมือง,邦芒,Sub Ditstrict101
+Bang Mae Nang,บางแม่นาง,邦湄南,Sub Ditstrict102
+Sai Noi,ไทรน้อย,赛诺伊,Sub Ditstrict103
+Bang Khu Wat,บางคูวัด,邦库瓦,Sub Ditstrict104
+Bang Luang,บางหลวง,邦銮,Sub Ditstrict105
+Khlong Khoi,คลองข่อย,克隆科伊,Sub Ditstrict106
+Bang Phlap,บางพลับ,邦帕普,Sub Ditstrict107
+Khlong Si,คลองสี่,空西,Sub Ditstrict108
+Phana Nikhom,พนานิคม,帕纳·尼孔,Sub Ditstrict109
+Khlong Nueng,คลองหนึ่ง,空努恩,Sub Ditstrict110
+Sai Yai,ไซใหญ่,赛亚,Sub Ditstrict111
+Suan Yai,สวนใหญ่,酸艾,Sub Ditstrict112
+Sam Wa Tawan Ok,สัมวาตะวันออก,Sam Wa Tawan Ok,Sub Ditstrict113
+Bang Chan,บังชัน,方灿,Sub Ditstrict114
+Ban Len,บานเลน,班伦,Sub Ditstrict115
+Ban Pho,บ้านโพธิ์,Ban Pho,Sub Ditstrict116
+Hua Mak,หัวหมาก,华麦,Sub Ditstrict117
+Ban Suan,บ้านสวน,班苏安,Sub Ditstrict118
+Bang Phun,บางพูน,邦潘,Sub Ditstrict119
+Khlong Sam,คลองสาม,克隆萨姆,Sub Ditstrict120
+Bang Kadi,บางกะดี,邦卡迪,Sub Ditstrict121
+Bang Khen,บางเขน,邦肯,Sub Ditstrict122
+Prachathipat,ประชาธิปัตย์,普拉查蒂帕特,Sub Ditstrict123
+Thap Yao,ทับยาว,塔普尧,Sub Ditstrict124
+Khlong Song,คลองสอง,克隆颂,Sub Ditstrict125
+Nong Chak,หนองชาก,农扎克,Sub Ditstrict126
+Nong Mai Daeng,น้องไม้แดง,农迈丹,Sub Ditstrict127
+Lahan,ลาฮาน,拉汉,Sub Ditstrict128
+Lat Lum Kaeo,ลาดหลุมแก้ว,Lat Lum Kaeo,Sub Ditstrict129
+Khlong Phra Udom,คลองพระอุดม,乌东空,Sub Ditstrict130
+Bueng Yitho,บึงยี่โถ,布恩伊托,Sub Ditstrict131
+Khlong Hok,คลองหก,空霍克,Sub Ditstrict132
+Ta Khan,ตาข่าน,塔汗,Sub Ditstrict133
+Na Di,นา ดิ,娜迪,Sub Ditstrict134
+Tha Sai,ท่าทราย,泰赛,Sub Ditstrict135
+Om Noi,ออมน้อย,唵诺伊,Sub Ditstrict136
+Nong Bua,หนองบัว,农布亚,Sub Ditstrict137
+Nong Lalok,น้องลัลโลก,农拉洛克,Sub Ditstrict138
+Krathum Lom,กระทุ่มลม,克拉瑟姆·洛姆,Sub Ditstrict139
+Lam Sai,ลำไซ,林赛,Sub Ditstrict140
+Rai Khing,ไร่ขิง,赖金,Sub Ditstrict141
+Bo Ta Lo,โบตาลอ,波塔罗,Sub Ditstrict142
+Don Ki Di,ดอน กี ดี,唐基迪,Sub Ditstrict143
+Naraphirom,นราภิรมย์,纳拉菲罗姆,Sub Ditstrict144
+Lam Phaya,ลำพญา,林帕亚,Sub Ditstrict145
+Khaerai,แคราย,凯莱,Sub Ditstrict146
+Tha Sao,ท่าเสา,塔萨奥,Sub Ditstrict147
+Bang Nam Chuet,บางน้ำจืด,邦南楚埃,Sub Ditstrict148
+Ban Ko,บ้านโค,班科,Sub Ditstrict149
+Bang Tho Rat,บังโทรัต,邦托拉特,Sub Ditstrict150
+Khlong Maduea,คลองมะเดื่อ,马杜埃河,Sub Ditstrict151
+Bang Krachao,บางกระเจ้า,邦克拉昭,Sub Ditstrict152
+Tha Chin,ท่าจีน,塔钦,Sub Ditstrict153
+Ban Mai,บ้านใหม่,板迈,Sub Ditstrict154
+Nong Khang Khok,หนองข้างคอก,农康科,Sub Ditstrict155
+Huai Kapi,ห้วยกะปิ,怀卡皮,Sub Ditstrict156
+Amphaeng,อำแพง,安蓬,Sub Ditstrict157
+Samae Dam,แสมดำ,萨梅水坝,Sub Ditstrict158
+Khok Kham,โคกขาม,霍克坎,Sub Ditstrict159
+Khlong Khwang,คลองขวาง,空空,Sub Ditstrict160
+Tha Phlap,ท่าพลับ,塔帕拉普,Sub Ditstrict161
+Pak Kret,ปากเกร็ด,包克雷特,Sub Ditstrict162
+Uthai,อุทัย,乌泰,Sub Ditstrict163
+Khlong Chik,คลองจิก,克隆奇克,Sub Ditstrict164
+Map Kha,มาบข่า,地图 Kha,Sub Ditstrict165
+Mae Nam Khu,แม่น้ำคู,湄南库,Sub Ditstrict166
+Khok Krabue,คอกกระบือ,克克拉布,Sub Ditstrict167
+Talad Krathum Baen,ตลาดกระทุ่มแบน,塔拉德·克拉图姆·巴恩,Sub Ditstrict168
+Chiang Rak Noi,เชียงรากน้อย,清乐诺伊,Sub Ditstrict169
+Na Khok,นาโคก,纳科克,Sub Ditstrict170
+Mahachai,มหาชัย,玛哈猜,Sub Ditstrict171
+Sao Thong Hin,เสาธงหิน,Sao Thong Hin,Sub Ditstrict172
+Nong Prao Ngai,หนองพร้าวไหญ่,农抛义,Sub Ditstrict173
+Bang Kha Yaeng,บางขาแยง,邦卡扬,Sub Ditstrict174
+Nawamin,นวมินทร์,纳瓦明,Sub Ditstrict175
+Bang Bua Thong,บางบัวทอง,邦布阿通,Sub Ditstrict176
+Bung Khohai,บุงโคไฮ,邦科海,Sub Ditstrict177
+Lat Phrao,ลาดพร้าว,拉特帕罗,Sub Ditstrict178
+Khlong Sip Song,คลองสิบสอง,克隆西普颂,Sub Ditstrict179
+Bang Krasan,บางกระสัน,邦克拉山,Sub Ditstrict180
+Bueng Nam Rak,บึงน้ำรักษ์,布恩南拉克,Sub Ditstrict181
+Khu Khot,คูคต,库霍特,Sub Ditstrict182
+Khlong Tamru,คลองตำหรุ,克隆塔姆鲁,Sub Ditstrict183
+Khlong Luang Phaeng,คลองหลวงแพ่ง,空銮彭,Sub Ditstrict184
+Khlong Kiu,คลองกิ่ว,克隆基乌,Sub Ditstrict185
+Talat Bang Khen,ตลาดบางเขน,塔拉特·邦·肯,Sub Ditstrict186
+Sam Wa Tawan Tok,สามวาตะวันตก,三和塔万托克,Sub Ditstrict187
+Bang Pakong,บางปะกง,邦巴功,Sub Ditstrict188
+Nuanchan,นวลจันทร์,暖蝉,Sub Ditstrict189
+Thap Ma,ทับมา,塔玛,Sub Ditstrict190
+Noen Phra,เนินพระ,诺恩帕,Sub Ditstrict191
+Na Roek,นา โรค,娜罗克,Sub Ditstrict192
+Chan Kasem,จันทร์เกษม,灿卡西姆,Sub Ditstrict193
+Si Kan,สีกัน,司坎,Sub Ditstrict194
+Chom Phon,จอมพล,Chom Phon,Sub Ditstrict195
+Khu Khwang,คูขวาง,库·克旺,Sub Ditstrict196
+Rahaeng,ราแฮง,拉亨,Sub Ditstrict197
+Lam Pho,ลำโพธิ์,拉姆普,Sub Ditstrict198
+Thawi Watthana,ทวีวัฒนา,塔维·瓦塔纳,Sub Ditstrict199
+Bang Yai,บางใหญ่,邦艾,Sub Ditstrict200
+Bang Krang,บางกร่าง,邦克朗,Sub Ditstrict201
+Rat Niyom,ราษฎร์นิยม,拉特尼永,Sub Ditstrict202
+Bang Phasi,บางภาษี,邦帕西,Sub Ditstrict203
+Nong Sua Chang,น้องเสือช้าง,张农苏亚,Sub Ditstrict204
+Khu Bang Luang,คูบางหลวง,库邦銮,Sub Ditstrict205
+Wat Chalo,วัดชลอ,瓦查洛,Sub Ditstrict206
+Map Phai,มาบไผ่,地图 Phai,Sub Ditstrict207
+Makham Khu,มะขามคู่,马卡姆库,Sub Ditstrict208
+Khun Sri,คุณศรี,坤斯里,Sub Ditstrict209
+Bang Ya Phraek,บางหญ้าแพรก,邦亚帕克,Sub Ditstrict210
+Bang Khu Wiang,บางคูเวียง,邦库维昂,Sub Ditstrict211
+Nong Khayat,น้องขยัต,农卡亚特,Sub Ditstrict212
+Sanap Thuep,สนาป ทูเอป,萨纳普·图普,Sub Ditstrict213
+Chamaep,ชาแมป,查马普,Sub Ditstrict214
+Bang Khu Rat,บางคูรัด,邦库拉,Sub Ditstrict215
+Na Pa,นาปา,纳帕,Sub Ditstrict216
+Nikhom Phatthana,นิคมพัฒนา,尼空·帕塔纳,Sub Ditstrict217
+Sam Ruean,แซม เรือน,山姆·鲁安,Sub Ditstrict218
+Lam Ta Sao,ลำตาเสา,林大曹,Sub Ditstrict219
+Ratchakham,ราชคำ,拉查坎,Sub Ditstrict220
+Bang Rak Phatthana,บางรักพัฒนา,邦拉帕塔纳,Sub Ditstrict221
+Lam Toiting,ลัม ทอยติ้ง,林托廷,Sub Ditstrict222
+Khan Ham,คานแฮม,汗哈姆,Sub Ditstrict223
+Ban Hip,บานฮิป,禁止嘻哈,Sub Ditstrict224
+month,เดือน,月,fave_property_price_postfix1
+Month,เดือน,月,fave_property_price_postfix2
+sqm,ตารางเมตร,平方米,fave_property_size_prefix1
+sq.m,ตร.ม.,平方米,fave_property_size_prefix2
+Single Phase (Upgradable),เฟสเดียว (อัปเกรดได้),单相（可升级）,fave_electricity-system1
+3 Phase 15/45 Amp (Upgradable),3 เฟส 15/45 แอมป์ (อัปเกรดได้),三相 15/45 安培（可升级）,fave_electricity-system2
+3 Phase 30/100 Amp (Upgradable),3 เฟส 30/100 แอมป์ (อัปเกรดได้),三相 30/100 安培（可升级）,fave_electricity-system3
+3 Phase 50/150 Amp (Upgradable),3 เฟส 50/150 แอมป์ (อัปเกรดได้),三相 50/150 安培（可升级）,fave_electricity-system4
+"3 Phase, 250 kVA",3 เฟส 250 kVA,三相，250千伏安,fave_electricity-system5
+7m,7 นาที,7米,fave_clear-height31
+8m,8 เมตร,8米,fave_clear-height32
+6m,6 เมตร,6米,fave_clear-height33
+10m,10 เมตร,10米,fave_clear-height34
+9m,9 นาที,9米,fave_clear-height35
+11m,11 นาที,11米,fave_clear-height36
+12m,12 เมตร,12米,fave_clear-height37
+13m,13 นาที,13米,fave_clear-height38
+3m,3 เมตร,3米,fave_clear-height39
+4m,4 เมตร,4米,fave_clear-height310
+5m,5 เมตร,5米,fave_clear-height311
+15m,15 เมตร,15米,fave_clear-height312
+14m,14 นาที,14米,fave_clear-height313
+Detached building,อาคารเดี่ยว,独立建筑,fave_features31
+Security guard,พนักงานรักษาความปลอดภัย,警卫,fave_features32
+With Office area,พร้อมพื้นที่สำนักงาน,办公区域,fave_features33
+Raised-floor loading bay,พื้นที่ขนถ่ายสินค้าแบบยกพื้น,高架地板装卸货平台,fave_features34
+On main road,บนถนนสายหลัก,在主干道上,fave_features35
+Purple zone,โซนสีม่วง,紫色区域,fave_features36
+Industrial estate zone,เขตนิคมอุตสาหกรรม,工业园区,fave_features37
+Free-trade zone,เขตการค้าเสรี,自由贸易区,fave_features38
+Overhead crane,เครนเหนือศีรษะ,高架起重机,fave_features39
+"a:2:{i:0;s:16:""With Office area"";i:1;s:14:""Security guard"";}","a:2:{i:0;s:16:""พร้อมพื้นที่สำนักงาน"";i:1;s:14:""เจ้าหน้าที่รักษาความปลอดภัย"";}","a:2:{i:0;s:16:""设有办公区域"";i:1;s:14:""配备保安人员"";}",fave_features310
