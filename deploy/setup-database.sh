@@ -23,7 +23,7 @@ echo ""
 # Check if PostgreSQL is installed
 if ! command -v psql &> /dev/null; then
     echo "Error: PostgreSQL is not installed!"
-    echo "Install it with: sudo apt-get install postgresql postgresql-contrib"
+    echo "Install it with: yum install postgresql-server (CentOS) or apt-get install postgresql (Ubuntu)"
     exit 1
 fi
 
