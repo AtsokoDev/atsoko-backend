@@ -32,34 +32,41 @@ apt update && apt upgrade -y
 ## Step 1: Install Required Software
 
 ### Install Node.js (v18 LTS)
-
+**Ubuntu/Debian:**
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
 apt install -y nodejs
-node --version  # Should show v18.x.x
-npm --version
+```
+
+**CentOS/AlmaLinux:**
+```bash
+curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -
+yum install -y nodejs
 ```
 
 ### Install PostgreSQL
-
+**Ubuntu/Debian:**
 ```bash
 apt install -y postgresql postgresql-contrib
 systemctl start postgresql
 systemctl enable postgresql
 ```
 
-### Install Nginx
-
+**CentOS/AlmaLinux:**
 ```bash
-apt install -y nginx
-systemctl start nginx
-systemctl enable nginx
+yum install -y postgresql-server postgresql-contrib
+postgresql-setup initdb
+systemctl start postgresql
+systemctl enable postgresql
 ```
 
 ### Install Git
-
 ```bash
+# Ubuntu
 apt install -y git
+
+# CentOS
+yum install -y git
 ```
 
 ### Install PM2 (Optional - Process Manager)
