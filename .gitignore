@@ -26,4 +26,3 @@ logs/
 docker-compose.override.yml
 
 git-merge.sh
-git-merge.sh
