@@ -9,6 +9,8 @@ node_modules/
 public/
 Frontend_TEST/
 
+scripts/export/
+
 # Ignore large data files
 image-mapping.json
 
