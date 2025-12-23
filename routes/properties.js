@@ -520,6 +520,19 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
             }
         };
 
+        // Sanitize numeric fields - convert empty strings to null
+        const numericFields = ['price', 'size', 'land_size', 'price_alternative'];
+        numericFields.forEach(field => {
+            if (data[field] === '' || data[field] === null || data[field] === undefined) {
+                data[field] = null;
+            } else if (typeof data[field] === 'string') {
+                // Remove commas and convert to number
+                const cleaned = data[field].replace(/,/g, '');
+                const num = parseFloat(cleaned);
+                data[field] = isNaN(num) ? null : num;
+            }
+        });
+
         // Create a temporary unique property_id for initial insert
         const tempPropertyId = `TEMP_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -729,6 +742,21 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
         if (fieldsToUpdate.length === 0) {
             return res.status(400).json({ success: false, error: 'No valid fields to update' });
         }
+
+        // Sanitize numeric fields - convert empty strings to null
+        const numericFields = ['price', 'size', 'land_size', 'price_alternative'];
+        numericFields.forEach(field => {
+            if (data[field] !== undefined) {
+                if (data[field] === '' || data[field] === null) {
+                    data[field] = null;
+                } else if (typeof data[field] === 'string') {
+                    // Remove commas and convert to number
+                    const cleaned = data[field].replace(/,/g, '');
+                    const num = parseFloat(cleaned);
+                    data[field] = isNaN(num) ? null : num;
+                }
+            }
+        });
 
         // Build the SET clause using parameterized queries
         const setClauses = [];
