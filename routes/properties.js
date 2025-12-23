@@ -46,22 +46,48 @@ router.get('/', optionalAuth, async (req, res) => {
             type,              // Warehouse or Factory
             province,
             district,
-            sub_district,      // NEW: Subdistrict filter
-            min_size,          // Area min
-            max_size,          // Area max
-            min_price,         // Price min
-            max_price,         // Price max
-            features,          // NEW: Features array (comma-separated or array)
-            min_height,        // NEW: Clear height min
-            max_height,        // NEW: Clear height max
-            floor_load,        // NEW: Floor loading
+            sub_district,      // Subdistrict filter
+            // Size filters - support both naming conventions
+            min_size,          // Area min (legacy)
+            max_size,          // Area max (legacy)
+            size_min,          // Area min (frontend)
+            size_max,          // Area max (frontend)
+            // Price filters - support both naming conventions
+            min_price,         // Price min (legacy)
+            max_price,         // Price max (legacy)
+            price_min,         // Price min (frontend)
+            price_max,         // Price max (frontend)
+            // Feature filters
+            features,          // Features array (comma-separated or array)
+            feature,           // Single feature filter (frontend)
+            // Height filters
+            min_height,        // Clear height min
+            max_height,        // Clear height max
+            clear_height,      // Clear height exact match (frontend)
+            // Other filters
+            floor_load,        // Floor loading
             page = 1,
-            limit = 20
+            limit
         } = req.query;
+
+        // Use frontend naming if provided, fallback to legacy
+        const effectiveMinSize = size_min || min_size;
+        const effectiveMaxSize = size_max || max_size;
+        const effectiveMinPrice = price_min || min_price;
+        const effectiveMaxPrice = price_max || max_price;
+
 
         // Validate pagination parameters
         const validatedPage = validateInteger(page, 'page', 1);
-        const validatedLimit = validateInteger(limit, 'limit', 1, 100); // Max 100 items per page
+
+        // If limit is not provided or is 0, return all results
+        // Otherwise, validate and cap at 1000 for performance
+        let validatedLimit;
+        if (!limit || limit === '0' || parseInt(limit) === 0) {
+            validatedLimit = null; // No limit - return all
+        } else {
+            validatedLimit = validateInteger(limit, 'limit', 1, 1000); // Max 1000 items per page
+        }
 
         let query = 'SELECT * FROM properties WHERE 1=1';
         let countQuery = 'SELECT COUNT(*) FROM properties WHERE 1=1';
@@ -105,13 +131,23 @@ router.get('/', optionalAuth, async (req, res) => {
         }
 
         // 3. Type filter (Warehouse or Factory)
+        // When searching for "warehouse", include both warehouse and factory
+        // because factory can also function as a warehouse
         if (type) {
-            const sanitizedType = sanitizePattern(type);
-            query += ` AND type ILIKE $${paramCount}`;
-            countQuery += ` AND type ILIKE $${paramCount}`;
-            params.push(`%${sanitizedType}%`);
-            countParams.push(`%${sanitizedType}%`);
-            paramCount++;
+            const typeLower = type.toLowerCase();
+            if (typeLower === 'warehouse') {
+                // Warehouse search includes both warehouse and factory
+                query += ` AND (type ILIKE '%warehouse%' OR type ILIKE '%factory%')`;
+                countQuery += ` AND (type ILIKE '%warehouse%' OR type ILIKE '%factory%')`;
+            } else {
+                // Factory or other types: search only for that specific type
+                const sanitizedType = sanitizePattern(type);
+                query += ` AND type ILIKE $${paramCount}`;
+                countQuery += ` AND type ILIKE $${paramCount}`;
+                params.push(`%${sanitizedType}%`);
+                countParams.push(`%${sanitizedType}%`);
+                paramCount++;
+            }
         }
 
         // 4. Province filter
@@ -144,9 +180,9 @@ router.get('/', optionalAuth, async (req, res) => {
             paramCount++;
         }
 
-        // 7. Area (Size) filter - Min
-        if (min_size) {
-            const validatedMinSize = validateNumber(min_size, 'min_size');
+        // 7. Area (Size) filter - Min (supports both min_size and size_min)
+        if (effectiveMinSize) {
+            const validatedMinSize = validateNumber(effectiveMinSize, 'size_min');
             query += ` AND size >= $${paramCount}`;
             countQuery += ` AND size >= $${paramCount}`;
             params.push(validatedMinSize);
@@ -154,9 +190,9 @@ router.get('/', optionalAuth, async (req, res) => {
             paramCount++;
         }
 
-        // 8. Area (Size) filter - Max
-        if (max_size) {
-            const validatedMaxSize = validateNumber(max_size, 'max_size');
+        // 8. Area (Size) filter - Max (supports both max_size and size_max)
+        if (effectiveMaxSize) {
+            const validatedMaxSize = validateNumber(effectiveMaxSize, 'size_max');
             query += ` AND size <= $${paramCount}`;
             countQuery += ` AND size <= $${paramCount}`;
             params.push(validatedMaxSize);
@@ -168,8 +204,8 @@ router.get('/', optionalAuth, async (req, res) => {
         // If status is "sale", use price_alternative, otherwise use price (default for rent)
         const priceField = status && status.toLowerCase().includes('sale') ? 'price_alternative' : 'price';
 
-        if (min_price) {
-            const validatedMinPrice = validateNumber(min_price, 'min_price');
+        if (effectiveMinPrice) {
+            const validatedMinPrice = validateNumber(effectiveMinPrice, 'price_min');
             query += ` AND ${priceField} >= $${paramCount}`;
             countQuery += ` AND ${priceField} >= $${paramCount}`;
             params.push(validatedMinPrice);
@@ -177,8 +213,8 @@ router.get('/', optionalAuth, async (req, res) => {
             paramCount++;
         }
 
-        if (max_price) {
-            const validatedMaxPrice = validateNumber(max_price, 'max_price');
+        if (effectiveMaxPrice) {
+            const validatedMaxPrice = validateNumber(effectiveMaxPrice, 'price_max');
             query += ` AND ${priceField} <= $${paramCount}`;
             countQuery += ` AND ${priceField} <= $${paramCount}`;
             params.push(validatedMaxPrice);
@@ -186,7 +222,7 @@ router.get('/', optionalAuth, async (req, res) => {
             paramCount++;
         }
 
-        // 10. Features filter (NEW) - Array support
+        // 10. Features filter - Array support
         if (features) {
             // Support both comma-separated string and array
             const featuresArray = Array.isArray(features) ? features : features.split(',').map(f => f.trim());
@@ -200,6 +236,16 @@ router.get('/', optionalAuth, async (req, res) => {
             paramCount++;
         }
 
+        // 10b. Single Feature filter (frontend) - ILIKE search for single feature
+        if (feature && !features) {
+            const sanitizedFeature = sanitizePattern(feature);
+            query += ` AND features ILIKE $${paramCount}`;
+            countQuery += ` AND features ILIKE $${paramCount}`;
+            params.push(`%${sanitizedFeature}%`);
+            countParams.push(`%${sanitizedFeature}%`);
+            paramCount++;
+        }
+
         // 11. Clear Height filter (NEW) - Min
         if (min_height) {
             const validatedMinHeight = validateNumber(min_height, 'min_height');
@@ -210,13 +256,23 @@ router.get('/', optionalAuth, async (req, res) => {
             paramCount++;
         }
 
-        // 12. Clear Height filter (NEW) - Max
+        // 12. Clear Height filter - Max
         if (max_height) {
             const validatedMaxHeight = validateNumber(max_height, 'max_height');
             query += ` AND clear_height <= $${paramCount}`;
             countQuery += ` AND clear_height <= $${paramCount}`;
             params.push(validatedMaxHeight);
             countParams.push(validatedMaxHeight);
+            paramCount++;
+        }
+
+        // 12b. Clear Height filter - Exact match (frontend)
+        if (clear_height && !min_height && !max_height) {
+            const sanitizedClearHeight = sanitizePattern(clear_height);
+            query += ` AND clear_height ILIKE $${paramCount}`;
+            countQuery += ` AND clear_height ILIKE $${paramCount}`;
+            params.push(`%${sanitizedClearHeight}%`);
+            countParams.push(`%${sanitizedClearHeight}%`);
             paramCount++;
         }
 
@@ -231,8 +287,14 @@ router.get('/', optionalAuth, async (req, res) => {
         }
 
         // Add ordering and pagination
-        query += ` ORDER BY id DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
-        params.push(validatedLimit, (validatedPage - 1) * validatedLimit);
+        if (validatedLimit === null) {
+            // No limit - return all results
+            query += ` ORDER BY id DESC`;
+        } else {
+            // With limit - add pagination
+            query += ` ORDER BY id DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+            params.push(validatedLimit, (validatedPage - 1) * validatedLimit);
+        }
 
         // Execute both queries
         const [result, countResult] = await Promise.all([
@@ -253,9 +315,9 @@ router.get('/', optionalAuth, async (req, res) => {
             data: responseData,
             pagination: {
                 page: validatedPage,
-                limit: validatedLimit,
+                limit: validatedLimit || total, // Show total if no limit
                 total,
-                pages: Math.ceil(total / validatedLimit)
+                pages: validatedLimit ? Math.ceil(total / validatedLimit) : 1
             },
             filters: {
                 keyword,
@@ -264,10 +326,11 @@ router.get('/', optionalAuth, async (req, res) => {
                 province,
                 district,
                 sub_district,
-                price_range: { min: min_price, max: max_price, field: priceField },
-                size_range: { min: min_size, max: max_size },
+                price_range: { min: effectiveMinPrice, max: effectiveMaxPrice, field: priceField },
+                size_range: { min: effectiveMinSize, max: effectiveMaxSize },
                 height_range: { min: min_height, max: max_height },
                 features,
+                feature,
                 floor_load
             }
         });
@@ -342,7 +405,7 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
 
         // Define required fields (property_id and titles are auto-generated)
         // Can use either legacy text fields OR new ID fields for type/status/location
-        const requiredFields = ['type', 'province', 'price', 'size', 'status'];
+        const requiredFields = ['type', 'province', 'district', 'sub_district', 'size', 'status'];
         const missingFields = requiredFields.filter(field => !data[field]);
 
         if (missingFields.length > 0) {
@@ -350,6 +413,37 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
                 success: false,
                 error: `Missing required fields: ${missingFields.join(', ')}`
             });
+        }
+
+        // Validate price based on status
+        const statusLower = data.status.toLowerCase();
+        const isRent = statusLower.includes('rent');
+        const isSale = statusLower.includes('sale');
+
+        if (isRent && isSale) {
+            // For Rent & Sale: require both price and price_alternative
+            if (!data.price || !data.price_alternative) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Status "For Rent & Sale" requires both price (rent) and price_alternative (sale)'
+                });
+            }
+        } else if (isRent) {
+            // For Rent only: require price
+            if (!data.price) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Status "For Rent" requires price field'
+                });
+            }
+        } else if (isSale) {
+            // For Sale only: require price_alternative
+            if (!data.price_alternative) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Status "For Sale" requires price_alternative field'
+                });
+            }
         }
 
         // Define all allowed fields (excluding property_id as it will be auto-generated)
