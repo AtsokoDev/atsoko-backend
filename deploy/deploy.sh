@@ -37,10 +37,9 @@ echo "🔄 Restarting application..."
 if systemctl is-active --quiet $APP_NAME; then
     sudo systemctl restart $APP_NAME
     echo "✅ Service restarted via systemd"
-fi
-
 # Method 2: Using PM2 (if systemd restart failed)
-if command -v pm2 &> /dev/null; then
+elif command -v pm2 &> /dev/null; then
+    cd $APP_DIR
     pm2 restart $APP_NAME || pm2 start ecosystem.config.js
     echo "✅ Service restarted via PM2"
 fi
