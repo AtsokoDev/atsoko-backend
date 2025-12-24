@@ -350,6 +350,16 @@ router.get('/:id', optionalAuth, async (req, res) => {
         const id = req.params.id;
         let result;
 
+        // DEBUG: Log authentication state
+        console.log('[GET /properties/:id] Property ID:', id);
+        console.log('[GET /properties/:id] req.user:', req.user ? {
+            id: req.user.id,
+            email: req.user.email,
+            role: req.user.role,
+            team: req.user.team
+        } : 'null (GUEST)');
+        console.log('[GET /properties/:id] Authorization header:', req.headers.authorization ? req.headers.authorization.substring(0, 30) + '...' : 'none');
+
         // Build base query
         let baseQuery = 'SELECT * FROM properties WHERE ';
         let params = [];
@@ -366,10 +376,14 @@ router.get('/:id', optionalAuth, async (req, res) => {
         if (!req.user) {
             // Guest: only published properties
             baseQuery += " AND approve_status = 'published'";
+            console.log('[GET /properties/:id] Applying GUEST restrictions (published only)');
         } else if (req.user.role === 'agent') {
             // Agent: only their team's properties
             baseQuery += ' AND agent_team = $2';
             params.push(req.user.team);
+            console.log('[GET /properties/:id] Applying AGENT restrictions (team:', req.user.team, ')');
+        } else {
+            console.log('[GET /properties/:id] ADMIN access - no restrictions');
         }
         // Admin: no restrictions
 
@@ -381,9 +395,20 @@ router.get('/:id', optionalAuth, async (req, res) => {
 
         // Hide secret fields for guests
         let responseData = result.rows[0];
+        console.log('[GET /properties/:id] Before filtering - landlord_name:', responseData.landlord_name);
+        console.log('[GET /properties/:id] Before filtering - landlord_contact:', responseData.landlord_contact);
+        console.log('[GET /properties/:id] Before filtering - agent_team:', responseData.agent_team);
+        console.log('[GET /properties/:id] Before filtering - coordinates:', responseData.coordinates);
+
         if (!req.user) {
+            console.log('[GET /properties/:id] Removing SECRET_FIELDS for GUEST');
             responseData = removeSecretFields(responseData);
+        } else {
+            console.log('[GET /properties/:id] User authenticated - SECRET_FIELDS will be INCLUDED');
         }
+
+        console.log('[GET /properties/:id] After filtering - landlord_name:', responseData.landlord_name);
+        console.log('[GET /properties/:id] After filtering - landlord_contact:', responseData.landlord_contact);
 
         res.json({ success: true, data: responseData });
     } catch (error) {
