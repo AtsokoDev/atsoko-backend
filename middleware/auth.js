@@ -98,35 +98,53 @@ const optionalAuth = async (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
 
+        // DEBUG: Log authorization header
+        console.log('[optionalAuth] Request path:', req.path);
+        console.log('[optionalAuth] Authorization header present:', !!authHeader);
+        console.log('[optionalAuth] Authorization header:', authHeader ? authHeader.substring(0, 30) + '...' : 'none');
+
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
             // No token - continue as guest
+            console.log('[optionalAuth] No valid Bearer token - continuing as GUEST');
             req.user = null;
             return next();
         }
 
         const token = authHeader.split(' ')[1];
+        console.log('[optionalAuth] Token length:', token.length);
 
         try {
             const decoded = jwt.verify(token, JWT_SECRET);
+            console.log('[optionalAuth] Token decoded successfully. userId:', decoded.userId);
 
             const result = await pool.query(
                 'SELECT id, email, name, role, team, is_active FROM users WHERE id = $1',
                 [decoded.userId]
             );
 
+            console.log('[optionalAuth] User query result count:', result.rows.length);
+
             if (result.rows.length > 0 && result.rows[0].is_active) {
                 req.user = result.rows[0];
+                console.log('[optionalAuth] User authenticated:', {
+                    id: req.user.id,
+                    email: req.user.email,
+                    role: req.user.role,
+                    team: req.user.team
+                });
             } else {
+                console.log('[optionalAuth] User not found or inactive - continuing as GUEST');
                 req.user = null;
             }
         } catch (jwtError) {
             // Invalid token - continue as guest
+            console.log('[optionalAuth] JWT Error:', jwtError.name, jwtError.message);
             req.user = null;
         }
 
         next();
     } catch (error) {
-        console.error('Optional auth middleware error:', error);
+        console.error('[optionalAuth] Middleware error:', error);
         req.user = null;
         next();
     }
