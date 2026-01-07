@@ -36,6 +36,53 @@ const sanitizePattern = (value) => {
     return value.replace(/[%_]/g, '\\$&');
 };
 
+/**
+ * Find the next available property number.
+ * This function looks for "gaps" in existing property IDs (e.g., if AT1R, AT3R exist, it returns 2)
+ * If no gaps exist, it returns max + 1.
+ * 
+ * @param {Object} client - Database client (from transaction) or pool
+ * @returns {Promise<number>} - The next available number to use
+ * 
+ * Algorithm:
+ * 1. Extract all numbers from existing property_id (ignoring R/S/SR suffix)
+ * 2. Find the smallest missing number in the sequence
+ * 3. If no gaps, use max + 1
+ */
+const findNextAvailablePropertyNumber = async (client) => {
+    // Query to find the first available (missing) number
+    // This uses generate_series to create a sequence and LEFT JOIN to find gaps
+    const query = `
+        WITH used_numbers AS (
+            -- Extract numbers from property_id (format: AT{number}{R|S|SR})
+            SELECT DISTINCT
+                CAST(SUBSTRING(property_id FROM '^AT([0-9]+)') AS INTEGER) as num
+            FROM properties 
+            WHERE property_id ~ '^AT[0-9]+(R|S|SR)$'
+        ),
+        max_num AS (
+            SELECT COALESCE(MAX(num), 0) as max_val FROM used_numbers
+        ),
+        all_numbers AS (
+            -- Generate series from 1 to max (or 1 if empty)
+            SELECT generate_series(1, GREATEST((SELECT max_val FROM max_num), 1)) as num
+        )
+        -- Find the first missing number, or max + 1 if no gaps
+        SELECT 
+            COALESCE(
+                (SELECT a.num FROM all_numbers a 
+                 LEFT JOIN used_numbers u ON a.num = u.num 
+                 WHERE u.num IS NULL 
+                 ORDER BY a.num ASC 
+                 LIMIT 1),
+                (SELECT max_val + 1 FROM max_num)
+            ) as next_number
+    `;
+
+    const result = await client.query(query);
+    return result.rows[0].next_number;
+};
+
 // GET all properties with filters
 // Uses optionalAuth - guests can access but won't see secret fields
 router.get('/', optionalAuth, async (req, res) => {
@@ -558,106 +605,109 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
             }
         });
 
-        // Create a temporary unique property_id for initial insert
-        const tempPropertyId = `TEMP_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        // ========================================================================
+        // USE TRANSACTION to prevent race condition when multiple admins create
+        // properties simultaneously. This ensures atomic property_id generation.
+        // ========================================================================
+        const client = await pool.connect();
 
-        // Build INSERT query with temporary property_id
-        const columnsWithPropertyId = [...fieldsToInsert, 'property_id'];
-        const columns = columnsWithPropertyId.map(field => `"${field}"`).join(', ');
-        const placeholders = columnsWithPropertyId.map((_, idx) => `$${idx + 1}`).join(', ');
-        const valuesWithPropertyId = [...fieldsToInsert.map(field => data[field]), tempPropertyId];
-
-        // Insert with temporary property_id
-        const insertQuery = `
-            INSERT INTO properties (${columns})
-            VALUES (${placeholders})
-            RETURNING id, status
-        `;
-
-        const insertResult = await pool.query(insertQuery, valuesWithPropertyId);
-        const newId = insertResult.rows[0].id;
-        const status = insertResult.rows[0].status;
-
-        // Generate the final property_id: AT{id}{status_code}
-        const statusCode = getStatusCode(status);
-        let propertyId = `AT${newId}${statusCode}`;
-
-        // Check if this property_id already exists and find an available one if needed
-        let checkQuery = 'SELECT id FROM properties WHERE property_id = $1 AND id != $2';
-        let checkResult = await pool.query(checkQuery, [propertyId, newId]);
-
-        // If duplicate exists, find the next available number
-        if (checkResult.rows.length > 0) {
-            // Get the maximum ID number used in property_id format AT*
-            // Use regex to extract only the numeric part between AT and status code
-            const maxIdQuery = `
-                SELECT COALESCE(
-                    MAX(
-                        CAST(
-                            NULLIF(SUBSTRING(property_id FROM '^AT([0-9]+)'), '') 
-                            AS INTEGER
-                        )
-                    ), 
-                    0
-                ) as max_num
-                FROM properties 
-                WHERE property_id ~ '^AT[0-9]+(R|S|SR)$'
-            `;
-            const maxIdResult = await pool.query(maxIdQuery);
-            const nextAvailableId = maxIdResult.rows[0].max_num + 1;
-            propertyId = `AT${nextAvailableId}${statusCode}`;
-        }
-
-        // Generate multi-language titles if applicable
-        let generatedTitles = { title_en: null, title_th: null, title_zh: null };
         try {
-            generatedTitles = await generateTitles({
-                type_id: data.type_id,
-                status_id: data.status_id,
-                subdistrict_id: data.subdistrict_id,
-                size: data.size,
-                property_id: propertyId,
-                // Fallback to legacy text fields
-                type: data.type,
-                status: data.status,
-                province: data.province,
-                district: data.district,
-                sub_district: data.sub_district
+            // Start transaction with SERIALIZABLE isolation for maximum safety
+            // This prevents two transactions from reading the same "next available number"
+            await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
+
+            // Step 1: Find the next available property number (fills gaps first)
+            // Example: if AT1R, AT3R, AT4S exist → returns 2 (the gap)
+            // Example: if AT1R, AT2SR, AT3R exist → returns 4 (no gaps, max+1)
+            const nextNumber = await findNextAvailablePropertyNumber(client);
+
+            // Step 2: Generate property_id with status code
+            const statusCode = getStatusCode(data.status);
+            const propertyId = `AT${nextNumber}${statusCode}`;
+
+            console.log(`[CREATE PROPERTY] Generating property_id: ${propertyId} (number: ${nextNumber}, status: ${statusCode})`);
+
+            // Step 3: Generate multi-language titles BEFORE insert (title is NOT NULL)
+            let generatedTitles = { title_en: null, title_th: null, title_zh: null };
+            try {
+                generatedTitles = await generateTitles({
+                    type_id: data.type_id,
+                    status_id: data.status_id,
+                    subdistrict_id: data.subdistrict_id,
+                    size: data.size,
+                    property_id: propertyId,
+                    // Fallback to legacy text fields
+                    type: data.type,
+                    status: data.status,
+                    province: data.province,
+                    district: data.district,
+                    sub_district: data.sub_district
+                });
+            } catch (titleError) {
+                console.warn('Title generation failed:', titleError.message);
+                // Continue with fallback title
+            }
+
+            // Use explicit title if provided, otherwise use generated title or fallback
+            const finalTitle = data.title || generatedTitles.title_en || `Property ${propertyId}`;
+
+            // Step 4: Build INSERT query with property_id AND titles
+            // Filter out title fields from fieldsToInsert to avoid duplicates
+            const titleFields = ['title', 'title_en', 'title_th', 'title_zh'];
+            const filteredFieldsToInsert = fieldsToInsert.filter(f => !titleFields.includes(f));
+
+            const columnsWithExtras = [...filteredFieldsToInsert, 'property_id', 'title', 'title_en', 'title_th', 'title_zh'];
+            const columns = columnsWithExtras.map(field => `"${field}"`).join(', ');
+            const placeholders = columnsWithExtras.map((_, idx) => `$${idx + 1}`).join(', ');
+            const valuesWithExtras = [
+                ...filteredFieldsToInsert.map(field => data[field]),
+                propertyId,
+                finalTitle,
+                generatedTitles.title_en,
+                generatedTitles.title_th,
+                generatedTitles.title_zh
+            ];
+
+            // Step 5: Insert the new property with all data
+            const insertQuery = `
+                INSERT INTO properties (${columns})
+                VALUES (${placeholders})
+                RETURNING *
+            `;
+
+            const result = await client.query(insertQuery, valuesWithExtras);
+
+            // Step 6: Commit transaction
+            await client.query('COMMIT');
+
+            console.log(`[CREATE PROPERTY] Successfully created property: ${propertyId} (id: ${result.rows[0].id})`);
+
+            res.status(201).json({
+                success: true,
+                data: result.rows[0],
+                message: 'Property created successfully'
             });
-        } catch (titleError) {
-            console.warn('Title generation failed:', titleError.message);
-            // Continue with null titles if generation fails
+
+        } catch (txError) {
+            // Rollback on any error
+            await client.query('ROLLBACK');
+
+            // If it's a serialization failure (race condition), suggest retry
+            if (txError.code === '40001') {
+                console.warn('[CREATE PROPERTY] Serialization conflict, client should retry');
+                return res.status(409).json({
+                    success: false,
+                    error: 'Concurrent modification detected. Please try again.',
+                    retryable: true
+                });
+            }
+
+            // Re-throw other errors to be handled by outer catch
+            throw txError;
+        } finally {
+            // Always release the client back to the pool
+            client.release();
         }
-
-        // Use explicit title if provided, otherwise use generated title or legacy title
-        const finalTitle = data.title || generatedTitles.title_en || `Property ${propertyId}`;
-
-        // Update with the final property_id and generated titles
-        const updateQuery = `
-            UPDATE properties 
-            SET property_id = $1,
-                title = $3,
-                title_en = $4,
-                title_th = $5,
-                title_zh = $6
-            WHERE id = $2 
-            RETURNING *
-        `;
-
-        const result = await pool.query(updateQuery, [
-            propertyId,
-            newId,
-            finalTitle,
-            generatedTitles.title_en,
-            generatedTitles.title_th,
-            generatedTitles.title_zh
-        ]);
-
-        res.status(201).json({
-            success: true,
-            data: result.rows[0],
-            message: 'Property created successfully'
-        });
 
     } catch (error) {
         console.error(error);
