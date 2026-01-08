@@ -606,6 +606,50 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
         });
 
         // ========================================================================
+        // Special handling for features - ensure it's stored as valid JSON string
+        // ========================================================================
+        if (data.features !== undefined) {
+            if (Array.isArray(data.features)) {
+                data.features = JSON.stringify(data.features);
+            } else if (typeof data.features === 'object' && data.features !== null) {
+                data.features = JSON.stringify(Object.values(data.features));
+            } else if (typeof data.features === 'string') {
+                // If it's already a string, check if it's valid JSON
+                try {
+                    JSON.parse(data.features);
+                    // Valid JSON, keep as is
+                } catch {
+                    // Not valid JSON, treat as comma-separated and convert
+                    data.features = JSON.stringify(data.features.split(',').map(f => f.trim()).filter(f => f));
+                }
+            } else {
+                data.features = '[]';
+            }
+        }
+
+        // ========================================================================
+        // Special handling for images - ensure it's stored as valid JSON string
+        // ========================================================================
+        if (data.images !== undefined) {
+            if (Array.isArray(data.images)) {
+                data.images = JSON.stringify(data.images);
+            } else if (typeof data.images === 'object' && data.images !== null) {
+                data.images = JSON.stringify(Object.values(data.images));
+            } else if (typeof data.images === 'string') {
+                // If it's already a string, check if it's valid JSON
+                try {
+                    JSON.parse(data.images);
+                    // Valid JSON, keep as is
+                } catch {
+                    // Not valid JSON, default to empty array
+                    data.images = '[]';
+                }
+            } else {
+                data.images = '[]';
+            }
+        }
+
+        // ========================================================================
         // USE TRANSACTION to prevent race condition when multiple admins create
         // properties simultaneously. This ensures atomic property_id generation.
         // ========================================================================
@@ -848,8 +892,14 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
                 } else if (typeof value === 'object' && value !== null) {
                     value = JSON.stringify(Object.values(value));
                 } else if (typeof value === 'string') {
-                    // If it's a comma-separated string, convert to array
-                    value = JSON.stringify(value.split(',').map(f => f.trim()).filter(f => f));
+                    // If it's a string, check if it's valid JSON first
+                    try {
+                        JSON.parse(value);
+                        // Valid JSON, keep as is
+                    } catch {
+                        // Not valid JSON, treat as comma-separated and convert
+                        value = JSON.stringify(value.split(',').map(f => f.trim()).filter(f => f));
+                    }
                 } else {
                     value = '[]';
                 }
