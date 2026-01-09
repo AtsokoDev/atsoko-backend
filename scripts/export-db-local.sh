@@ -108,7 +108,9 @@ if [ $? -eq 0 ]; then
     echo "📥 จากนั้นบน VPS ให้รัน:"
     echo "   ./scripts/import-db-vps.sh exports/db-export-latest.sql"
     echo "=============================================="
-    
+    echo "⚠️  อย่าลืมรัน "pm2 status" เพื่อดู status Web"
+    echo "⚠️  อย่าลืมรัน "pm2 restart atsoko-backend" เพื่อ Restart Web"
+    echo "=============================================="
     # Also create a latest link for convenience
     LATEST_LINK="$EXPORT_DIR/db-export-latest.sql"
     rm -f "$LATEST_LINK"
