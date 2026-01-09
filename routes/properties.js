@@ -107,6 +107,9 @@ router.get('/', optionalAuth, async (req, res) => {
             // Feature filters
             features,          // Features array (comma-separated or array)
             feature,           // Single feature filter (frontend)
+            // Label/Zone filters
+            labels,            // Zone Type (database column name)
+            zone_type,         // Zone Type (frontend name)
             // Height filters
             min_height,        // Clear height min
             max_height,        // Clear height max
@@ -122,6 +125,7 @@ router.get('/', optionalAuth, async (req, res) => {
         const effectiveMaxSize = size_max || max_size;
         const effectiveMinPrice = price_min || min_price;
         const effectiveMaxPrice = price_max || max_price;
+        const effectiveLabelsParam = labels || zone_type; // For response object
 
 
         // Validate pagination parameters
@@ -272,15 +276,41 @@ router.get('/', optionalAuth, async (req, res) => {
         // 10. Features filter - Array support
         if (features) {
             // Support both comma-separated string and array
-            const featuresArray = Array.isArray(features) ? features : features.split(',').map(f => f.trim());
+            // Normalize to Title Case to match database standard (e.g. "parking" -> "Parking")
+            const toTitleCase = (str) => str.toLowerCase().replace(/\b\w/g, s => s.toUpperCase());
+            const rawArray = Array.isArray(features) ? features : features.split(',').map(f => f.trim());
+            const featuresArray = rawArray.map(f => toTitleCase(f));
 
             // Use JSONB contains operator (@>) to check if all requested features exist
-            // Cast text column to jsonb
-            query += ` AND features::jsonb @> $${paramCount}::jsonb`;
-            countQuery += ` AND features::jsonb @> $${paramCount}::jsonb`;
+            // Cast text column to jsonb only if it looks like a JSON array (starts with [)
+            // This prevents "invalid input syntax for type json" errors on empty strings
+            query += ` AND (features LIKE '[%]' AND features::jsonb @> $${paramCount}::jsonb)`;
+            countQuery += ` AND (features LIKE '[%]' AND features::jsonb @> $${paramCount}::jsonb)`;
             params.push(JSON.stringify(featuresArray));
             countParams.push(JSON.stringify(featuresArray));
             paramCount++;
+        }
+
+        // 11. Labels / Zone Type Filter (Supports pipe-separated values like "Zone A|Zone B")
+        const effectiveLabels = labels || zone_type;
+        if (effectiveLabels) {
+            // Normalize to array
+            const labelsArray = Array.isArray(effectiveLabels)
+                ? effectiveLabels
+                : effectiveLabels.split(',').map(l => l.trim());
+
+            // For each requested label, checking if it exists inside the label string using ILIKE
+            // Logic: AND (Must have ALL selected zones) - standard narrowing filter behavior
+            labelsArray.forEach(label => {
+                if (label) {
+                    const sanitizedLabel = sanitizePattern(label);
+                    query += ` AND labels ILIKE $${paramCount}`;
+                    countQuery += ` AND labels ILIKE $${paramCount}`;
+                    params.push(`%${sanitizedLabel}%`);
+                    countParams.push(`%${sanitizedLabel}%`);
+                    paramCount++;
+                }
+            });
         }
 
         // 10b. Single Feature filter (frontend) - ILIKE search for single feature
@@ -378,7 +408,9 @@ router.get('/', optionalAuth, async (req, res) => {
                 height_range: { min: min_height, max: max_height },
                 features,
                 feature,
-                floor_load
+                floor_load,
+                labels: effectiveLabelsParam,
+                zone_type: effectiveLabelsParam
             }
         });
     } catch (error) {
