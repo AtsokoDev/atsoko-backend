@@ -89,6 +89,7 @@ router.get('/', optionalAuth, async (req, res) => {
     try {
         const {
             keyword,           // Search by title
+            property_id,       // Search by property_id (partial match)
             status,            // Rent or Sale
             type,              // Warehouse or Factory
             province,
@@ -171,6 +172,16 @@ router.get('/', optionalAuth, async (req, res) => {
             paramCount++;
         }
 
+        // 1b. Property ID search (partial match)
+        if (property_id) {
+            const sanitizedPropertyId = sanitizePattern(property_id);
+            query += ` AND property_id ILIKE $${paramCount}`;
+            countQuery += ` AND property_id ILIKE $${paramCount}`;
+            params.push(`%${sanitizedPropertyId}%`);
+            countParams.push(`%${sanitizedPropertyId}%`);
+            paramCount++;
+        }
+
         // 2. Status filter (Rent or Sale)
         if (status) {
             const sanitizedStatus = sanitizePattern(status);
@@ -182,23 +193,14 @@ router.get('/', optionalAuth, async (req, res) => {
         }
 
         // 3. Type filter (Warehouse or Factory)
-        // When searching for "warehouse", include both warehouse and factory
-        // because factory can also function as a warehouse
+        // Filter for exact type match
         if (type) {
-            const typeLower = type.toLowerCase();
-            if (typeLower === 'warehouse') {
-                // Warehouse search includes both warehouse and factory
-                query += ` AND (type ILIKE '%warehouse%' OR type ILIKE '%factory%')`;
-                countQuery += ` AND (type ILIKE '%warehouse%' OR type ILIKE '%factory%')`;
-            } else {
-                // Factory or other types: search only for that specific type
-                const sanitizedType = sanitizePattern(type);
-                query += ` AND type ILIKE $${paramCount}`;
-                countQuery += ` AND type ILIKE $${paramCount}`;
-                params.push(`%${sanitizedType}%`);
-                countParams.push(`%${sanitizedType}%`);
-                paramCount++;
-            }
+            const sanitizedType = sanitizePattern(type);
+            query += ` AND type ILIKE $${paramCount}`;
+            countQuery += ` AND type ILIKE $${paramCount}`;
+            params.push(`%${sanitizedType}%`);
+            countParams.push(`%${sanitizedType}%`);
+            paramCount++;
         }
 
         // 4. Province filter
@@ -398,6 +400,7 @@ router.get('/', optionalAuth, async (req, res) => {
             },
             filters: {
                 keyword,
+                property_id,
                 status,
                 type,
                 province,
