@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
+const { authenticate, authorize } = require('../middleware/auth');
+const sanitizeHtml = require('sanitize-html');
 
 // Helper function to validate integer
 const validateInteger = (value, fieldName, min = 1, max = null) => {
@@ -12,6 +14,7 @@ const validateInteger = (value, fieldName, min = 1, max = null) => {
 };
 
 // GET /api/tips - List all articles
+// Public endpoint - no authentication required
 router.get('/', async (req, res) => {
     try {
         const {
@@ -72,6 +75,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET /api/tips/:slug - Get single article by slug
+// Public endpoint - no authentication required
 router.get('/:slug', async (req, res) => {
     try {
         const { slug } = req.params;
@@ -99,8 +103,8 @@ router.get('/:slug', async (req, res) => {
 });
 
 // POST /api/tips - Create new article
-// TODO: Add authentication middleware to protect this route
-router.post('/', async (req, res) => {
+// Protected: Admin only
+router.post('/', authenticate, authorize(['admin']), async (req, res) => {
     try {
         const {
             slug,
@@ -120,11 +124,23 @@ router.post('/', async (req, res) => {
             });
         }
 
+        // Sanitize HTML content to prevent XSS attacks
+        const sanitizedContent = sanitizeHtml(content, {
+            allowedTags: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 
+                         'ul', 'ol', 'li', 'a', 'img', 'blockquote', 'code', 'pre', 'hr', 'table', 
+                         'thead', 'tbody', 'tr', 'th', 'td', 'div', 'span'],
+            allowedAttributes: {
+                'a': ['href', 'title', 'target', 'rel'],
+                'img': ['src', 'alt', 'title'],
+                '*': ['class', 'id']
+            }
+        });
+
         const result = await pool.query(
             `INSERT INTO tips (slug, title, excerpt, content, featured_image, author, published_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7)
              RETURNING *`,
-            [slug, title, excerpt, content, featured_image, author, published_at]
+            [slug, title, excerpt, sanitizedContent, featured_image, author, published_at]
         );
 
         res.status(201).json({
@@ -145,8 +161,8 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/tips/:id - Update article
-// TODO: Add authentication middleware to protect this route
-router.put('/:id', async (req, res) => {
+// Protected: Admin only
+router.put('/:id', authenticate, authorize(['admin']), async (req, res) => {
     try {
         const { id } = req.params;
         const data = req.body;
@@ -182,8 +198,22 @@ router.put('/:id', async (req, res) => {
         let idx = 1;
 
         fieldsToUpdate.forEach(field => {
+            // Sanitize content if it's being updated
+            if (field === 'content') {
+                params.push(sanitizeHtml(data[field], {
+                    allowedTags: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 
+                                 'ul', 'ol', 'li', 'a', 'img', 'blockquote', 'code', 'pre', 'hr', 'table', 
+                                 'thead', 'tbody', 'tr', 'th', 'td', 'div', 'span'],
+                    allowedAttributes: {
+                        'a': ['href', 'title', 'target', 'rel'],
+                        'img': ['src', 'alt', 'title'],
+                        '*': ['class', 'id']
+                    }
+                }));
+            } else {
+                params.push(data[field]);
+            }
             setClauses.push(`"${field}" = $${idx}`);
-            params.push(data[field]);
             idx++;
         });
 
@@ -225,8 +255,8 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/tips/:id - Delete article
-// TODO: Add authentication middleware to protect this route
-router.delete('/:id', async (req, res) => {
+// Protected: Admin only
+router.delete('/:id', authenticate, authorize(['admin']), async (req, res) => {
     try {
         const { id } = req.params;
 
