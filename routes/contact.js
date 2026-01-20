@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const { contactFormLimiter } = require('../middleware/rateLimiter');
+const { authenticate, authorize } = require('../middleware/auth');
 
 // Helper function to validate integer
 const validateInteger = (value, fieldName, min = 1, max = null) => {
@@ -80,8 +81,7 @@ router.post('/', contactFormLimiter, async (req, res) => {
 });
 
 // GET /api/contact - List all messages (admin only)
-// TODO: Add authentication middleware to protect this route
-router.get('/', async (req, res) => {
+router.get('/', authenticate, authorize(['admin']), async (req, res) => {
     try {
         const {
             status,
@@ -138,8 +138,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET /api/contact/:id - Get single message (admin only)
-// TODO: Add authentication middleware to protect this route
-router.get('/:id', async (req, res) => {
+router.get('/:id', authenticate, authorize(['admin']), async (req, res) => {
     try {
         const { id } = req.params;
 
@@ -166,8 +165,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // PUT /api/contact/:id - Update message status (admin only)
-// TODO: Add authentication middleware to protect this route
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticate, authorize(['admin']), async (req, res) => {
     try {
         const { id } = req.params;
         const { status } = req.body;
@@ -215,8 +213,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/contact/:id - Delete message (admin only)
-// TODO: Add authentication middleware to protect this route
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticate, authorize(['admin']), async (req, res) => {
     try {
         const { id } = req.params;
 

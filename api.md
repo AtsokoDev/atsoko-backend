@@ -873,9 +873,29 @@ DELETE /api/upload/image/AT1862R_1.webp
 
 Base path: `/api/tips`
 
+> 📝 **Full Documentation**: See [TIPS_API_DOCUMENTATION.md](./TIPS_API_DOCUMENTATION.md) for complete details
+
+### Overview
+
+Tips API ใช้สำหรับจัดการบทความ/Blog posts พร้อมระบบ authentication และ HTML sanitization
+
+**Access Control:**
+- GET endpoints: 🔓 Public (ไม่ต้อง login)
+- POST/PUT/DELETE endpoints: 🔒 Admin only
+
+**Security Features:**
+- ✅ JWT Authentication
+- ✅ HTML Sanitization (DOMPurify)
+- ✅ XSS Protection
+- ✅ Slug Uniqueness
+
+---
+
 ### 1. GET `/api/tips` - List Articles
 
 ดึงรายการบทความทั้งหมด พร้อม pagination และ filter ตามสถานะการเผยแพร่
+
+> 🔓 **Public Access** - ไม่ต้อง authentication
 
 #### Query Parameters
 
@@ -884,6 +904,11 @@ Base path: `/api/tips`
 | `page` | integer | หน้าที่ต้องการ (เริ่มที่ 1) | `?page=1` |
 | `limit` | integer | จำนวนต่อหน้า (max 100) | `?limit=20` |
 | `published` | boolean/string | กรองตามสถานะเผยแพร่ | `?published=true` หรือ `?published=all` |
+
+**Published Logic:**
+- `published=true` (default): แสดงเฉพาะที่ `published_at ≤ NOW()`
+- `published=false`: แสดงเฉพาะ draft (`published_at = NULL` หรือ `published_at > NOW()`)
+- `published=all`: แสดงทั้งหมด
 
 #### Response
 
@@ -896,12 +921,12 @@ Base path: `/api/tips`
       "slug": "warehouse-safety-tips",
       "title": "5 Essential Warehouse Safety Tips",
       "excerpt": "Learn the most important safety practices...",
-      "content": "Full article content here...",
+      "content": "<h1>Introduction</h1><p>Safety is paramount...</p>",
       "featured_image": "/images/tips/warehouse-safety.jpg",
       "author": "John Doe",
-      "published_at": "2025-12-08T03:00:00.000Z",
-      "created_at": "2025-12-07T10:00:00.000Z",
-      "updated_at": "2025-12-07T10:00:00.000Z"
+      "published_at": "2025-01-20T10:00:00.000Z",
+      "created_at": "2025-01-15T08:00:00.000Z",
+      "updated_at": "2025-01-20T09:00:00.000Z"
     }
   ],
   "pagination": {
@@ -913,11 +938,32 @@ Base path: `/api/tips`
 }
 ```
 
+#### Examples
+
+```bash
+# ดึงบทความที่ publish แล้ว (หน้าแรก)
+GET /api/tips?page=1&limit=10
+
+# ดึง draft ทั้งหมด
+GET /api/tips?published=false
+
+# ดึงทั้งหมด (published + draft)
+GET /api/tips?published=all
+```
+
 ---
 
 ### 2. GET `/api/tips/:slug` - Get Article by Slug
 
 ดึงบทความเดียวโดยใช้ slug
+
+> 🔓 **Public Access** - ไม่ต้อง authentication
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `slug` | string | URL-friendly identifier (เช่น `warehouse-safety-tips`) |
 
 #### Response
 
@@ -929,14 +975,29 @@ Base path: `/api/tips`
     "slug": "warehouse-safety-tips",
     "title": "5 Essential Warehouse Safety Tips",
     "excerpt": "Learn the most important safety practices...",
-    "content": "Full article content here...",
+    "content": "<h1>Introduction</h1><p>Safety is paramount...</p>",
     "featured_image": "/images/tips/warehouse-safety.jpg",
     "author": "John Doe",
-    "published_at": "2025-12-08T03:00:00.000Z",
-    "created_at": "2025-12-07T10:00:00.000Z",
-    "updated_at": "2025-12-07T10:00:00.000Z"
+    "published_at": "2025-01-20T10:00:00.000Z",
+    "created_at": "2025-01-15T08:00:00.000Z",
+    "updated_at": "2025-01-20T09:00:00.000Z"
   }
 }
+```
+
+#### Error Response (404)
+
+```json
+{
+  "success": false,
+  "error": "Article not found"
+}
+```
+
+#### Example
+
+```bash
+GET /api/tips/warehouse-safety-tips
 ```
 
 ---
@@ -945,7 +1006,14 @@ Base path: `/api/tips`
 
 สร้างบทความใหม่
 
-> 🔒 **Requires**: Authentication (Admin)
+> 🔒 **Requires**: Admin Authentication
+
+#### Headers
+
+```
+Authorization: Bearer <admin_access_token>
+Content-Type: application/json
+```
 
 #### Request Body
 
@@ -954,22 +1022,180 @@ Base path: `/api/tips`
   "slug": "warehouse-safety-tips",
   "title": "5 Essential Warehouse Safety Tips",
   "excerpt": "Learn the most important safety practices...",
-  "content": "Full article content here...",
+  "content": "<h1>Introduction</h1><p>Safety is paramount...</p>",
   "featured_image": "/images/tips/warehouse-safety.jpg",
   "author": "John Doe",
-  "published_at": "2025-12-08T03:00:00.000Z"
+  "published_at": "2025-01-20T10:00:00.000Z"
 }
 ```
 
 **Required fields**: `slug`, `title`, `content`
 
+**Optional fields**: `excerpt`, `featured_image`, `author`, `published_at`
+
+**Published Logic:**
+- ถ้าไม่ใส่ `published_at` → บันทึกเป็น draft
+- ถ้าใส่ `published_at = NULL` → draft
+- ถ้าใส่ `published_at = อนาคต` → scheduled (จะแสดงอัตโนมัติเมื่อถึงเวลา)
+- ถ้าใส่ `published_at ≤ ปัจจุบัน` → published ทันที
+
+**HTML Sanitization:**
+- Content จะถูก sanitize อัตโนมัติด้วย DOMPurify
+- อนุญาตเฉพาะ HTML tags ที่ปลอดภัย (h1-h6, p, strong, em, ul, ol, li, a, img, etc.)
+- ลบ `<script>`, `<iframe>`, และ tags อันตรายอื่นๆ
+
+#### Response (201)
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 2,
+    "slug": "warehouse-safety-tips",
+    "title": "5 Essential Warehouse Safety Tips",
+    "content": "<h1>Introduction</h1><p>Safety is paramount...</p>",
+    ...
+  },
+  "message": "Article created successfully"
+}
+```
+
+#### Error Responses
+
+```json
+// 400 - Missing required fields
+{
+  "success": false,
+  "error": "Missing required fields: slug, title, content"
+}
+
+// 401 - Not authenticated
+{
+  "success": false,
+  "error": "Access denied. No token provided."
+}
+
+// 403 - Not admin
+{
+  "success": false,
+  "error": "Access denied. Insufficient permissions."
+}
+
+// 409 - Duplicate slug
+{
+  "success": false,
+  "error": "Article with this slug already exists"
+}
+```
+
+#### Example
+
+```bash
+curl -X POST http://localhost:3000/api/tips \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "slug": "warehouse-safety-tips",
+    "title": "5 Essential Warehouse Safety Tips",
+    "content": "<h1>Introduction</h1><p>Content here...</p>",
+    "published_at": "2025-01-20T10:00:00.000Z"
+  }'
+```
+
 ---
 
 ### 4. PUT `/api/tips/:id` - Update Article
 
-แก้ไขบทความ
+แก้ไขบทความ (partial update)
 
-> 🔒 **Requires**: Authentication (Admin)
+> 🔒 **Requires**: Admin Authentication
+
+#### Headers
+
+```
+Authorization: Bearer <admin_access_token>
+Content-Type: application/json
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | integer | ID ของบทความ |
+
+#### Request Body (ใส่เฉพาะฟิลด์ที่ต้องการแก้)
+
+```json
+{
+  "title": "10 Essential Warehouse Safety Tips (Updated)",
+  "content": "<h1>Updated Content</h1><p>New content...</p>"
+}
+```
+
+**Allowed fields**: `slug`, `title`, `excerpt`, `content`, `featured_image`, `author`, `published_at`
+
+**Note:**
+- `updated_at` จะถูกอัปเดตอัตโนมัติ
+- Content จะถูก sanitize อัตโนมัติ
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 2,
+    "title": "10 Essential Warehouse Safety Tips (Updated)",
+    "updated_at": "2025-01-20T11:00:00.000Z",
+    ...
+  },
+  "message": "Article updated successfully"
+}
+```
+
+#### Error Responses
+
+```json
+// 400 - Empty body
+{
+  "success": false,
+  "error": "Request body is empty"
+}
+
+// 404 - Article not found
+{
+  "success": false,
+  "error": "Article not found"
+}
+
+// 409 - Duplicate slug
+{
+  "success": false,
+  "error": "Duplicate slug"
+}
+```
+
+#### Examples
+
+```bash
+# แก้เฉพาะ title
+curl -X PUT http://localhost:3000/api/tips/2 \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Updated Title"}'
+
+# Publish draft
+curl -X PUT http://localhost:3000/api/tips/2 \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"published_at": "2025-01-20T10:00:00.000Z"}'
+
+# Unpublish (เปลี่ยนเป็น draft)
+curl -X PUT http://localhost:3000/api/tips/2 \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"published_at": null}'
+```
 
 ---
 
@@ -977,7 +1203,86 @@ Base path: `/api/tips`
 
 ลบบทความ
 
-> 🔒 **Requires**: Authentication (Admin)
+> 🔒 **Requires**: Admin Authentication
+
+#### Headers
+
+```
+Authorization: Bearer <admin_access_token>
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | integer | ID ของบทความ |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "message": "Article deleted successfully",
+  "data": {
+    "id": 2,
+    "slug": "warehouse-safety-tips",
+    ...
+  }
+}
+```
+
+#### Error Response (404)
+
+```json
+{
+  "success": false,
+  "error": "Article not found"
+}
+```
+
+#### Example
+
+```bash
+curl -X DELETE http://localhost:3000/api/tips/2 \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+---
+
+### Rich Text Editor Integration
+
+Tips API รองรับ HTML content ใน field `content` สำหรับใช้กับ Rich Text Editor
+
+**แนะนำ Editor:**
+- Quill.js (เบา, ใช้ง่าย)
+- TinyMCE (ฟีเจอร์เยอะ)
+- CKEditor (มาตรฐานอุตสาหกรรม)
+
+**Frontend Display:**
+```html
+<!-- React -->
+<div dangerouslySetInnerHTML={{ __html: article.content }} />
+
+<!-- Vue -->
+<div v-html="article.content"></div>
+
+<!-- Vanilla JS -->
+<div id="article"></div>
+<script>
+  document.getElementById('article').innerHTML = article.content;
+</script>
+```
+
+**ดูตัวอย่างเพิ่มเติม:** [TIPS_API_EXAMPLES.md](./TIPS_API_EXAMPLES.md)
+
+---
+
+### Security Notes
+
+1. **HTML Sanitization**: ทุก HTML content จะถูก sanitize ด้วย DOMPurify ก่อนบันทึก
+2. **XSS Protection**: ลบ `<script>`, `<iframe>`, และ tags อันตรายอื่นๆ อัตโนมัติ
+3. **Admin Only**: เฉพาะ admin เท่านั้นที่สร้าง/แก้ไข/ลบได้
+4. **Slug Uniqueness**: Database constraint ป้องกัน duplicate URL
 
 ---
 
@@ -1318,6 +1623,12 @@ Agents can only access properties belonging to their assigned team (A, B, or C).
 
 ## Change Log
 
+- **2025-01-20**: Updated Tips API (v2.1.0)
+  - ✅ Added authentication & authorization (Admin only for CUD operations)
+  - ✅ Added HTML sanitization with DOMPurify
+  - ✅ Fixed SQL injection vulnerability
+  - ✅ Enhanced security with XSS protection
+  - ✅ Added comprehensive documentation
 - **2025-12-08**: Added Authentication API (v2.0.0)
   - JWT-based authentication with access/refresh tokens
   - Role-based access control (Admin, Agent, Guest)
