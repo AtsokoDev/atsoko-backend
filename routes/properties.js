@@ -193,8 +193,8 @@ router.get('/', optionalAuth, async (req, res) => {
         }
 
         // 3. Type filter (Warehouse or Factory)
-        // Filter for exact type match
-        if (type) {
+        // Special: "Warehouse" shows ALL, "Factory" filters only Factory
+        if (type && type.toLowerCase() !== 'warehouse') {
             const sanitizedType = sanitizePattern(type);
             query += ` AND type ILIKE $${paramCount}`;
             countQuery += ` AND type ILIKE $${paramCount}`;
@@ -203,34 +203,100 @@ router.get('/', optionalAuth, async (req, res) => {
             paramCount++;
         }
 
-        // 4. Province filter
+        // 4. Province filter (supports multiselect with comma-separated values)
         if (province) {
-            const sanitizedProvince = sanitizePattern(province);
-            query += ` AND province ILIKE $${paramCount}`;
-            countQuery += ` AND province ILIKE $${paramCount}`;
-            params.push(`%${sanitizedProvince}%`);
-            countParams.push(`%${sanitizedProvince}%`);
-            paramCount++;
+            // Convert to array (supports both comma-separated string and array)
+            const provinceArray = Array.isArray(province) 
+                ? province 
+                : province.split(',').map(p => p.trim()).filter(p => p);
+            
+            if (provinceArray.length === 1) {
+                // Single value - use original logic
+                const sanitizedProvince = sanitizePattern(provinceArray[0]);
+                query += ` AND province ILIKE $${paramCount}`;
+                countQuery += ` AND province ILIKE $${paramCount}`;
+                params.push(`%${sanitizedProvince}%`);
+                countParams.push(`%${sanitizedProvince}%`);
+                paramCount++;
+            } else if (provinceArray.length > 1) {
+                // Multiple values - use OR logic
+                const orConditions = [];
+                const countOrConditions = [];
+                provinceArray.forEach(p => {
+                    const sanitizedProvince = sanitizePattern(p);
+                    orConditions.push(`province ILIKE $${paramCount}`);
+                    countOrConditions.push(`province ILIKE $${paramCount}`);
+                    params.push(`%${sanitizedProvince}%`);
+                    countParams.push(`%${sanitizedProvince}%`);
+                    paramCount++;
+                });
+                query += ` AND (${orConditions.join(' OR ')})`;
+                countQuery += ` AND (${countOrConditions.join(' OR ')})`;
+            }
         }
 
-        // 5. District filter
+        // 5. District filter (supports multiselect with comma-separated values)
         if (district) {
-            const sanitizedDistrict = sanitizePattern(district);
-            query += ` AND district ILIKE $${paramCount}`;
-            countQuery += ` AND district ILIKE $${paramCount}`;
-            params.push(`%${sanitizedDistrict}%`);
-            countParams.push(`%${sanitizedDistrict}%`);
-            paramCount++;
+            // Convert to array (supports both comma-separated string and array)
+            const districtArray = Array.isArray(district) 
+                ? district 
+                : district.split(',').map(d => d.trim()).filter(d => d);
+            
+            if (districtArray.length === 1) {
+                // Single value - use original logic
+                const sanitizedDistrict = sanitizePattern(districtArray[0]);
+                query += ` AND district ILIKE $${paramCount}`;
+                countQuery += ` AND district ILIKE $${paramCount}`;
+                params.push(`%${sanitizedDistrict}%`);
+                countParams.push(`%${sanitizedDistrict}%`);
+                paramCount++;
+            } else if (districtArray.length > 1) {
+                // Multiple values - use OR logic
+                const orConditions = [];
+                const countOrConditions = [];
+                districtArray.forEach(d => {
+                    const sanitizedDistrict = sanitizePattern(d);
+                    orConditions.push(`district ILIKE $${paramCount}`);
+                    countOrConditions.push(`district ILIKE $${paramCount}`);
+                    params.push(`%${sanitizedDistrict}%`);
+                    countParams.push(`%${sanitizedDistrict}%`);
+                    paramCount++;
+                });
+                query += ` AND (${orConditions.join(' OR ')})`;
+                countQuery += ` AND (${countOrConditions.join(' OR ')})`;
+            }
         }
 
-        // 6. Sub-district filter (NEW)
+        // 6. Sub-district filter (supports multiselect with comma-separated values)
         if (sub_district) {
-            const sanitizedSubDistrict = sanitizePattern(sub_district);
-            query += ` AND sub_district ILIKE $${paramCount}`;
-            countQuery += ` AND sub_district ILIKE $${paramCount}`;
-            params.push(`%${sanitizedSubDistrict}%`);
-            countParams.push(`%${sanitizedSubDistrict}%`);
-            paramCount++;
+            // Convert to array (supports both comma-separated string and array)
+            const subDistrictArray = Array.isArray(sub_district) 
+                ? sub_district 
+                : sub_district.split(',').map(s => s.trim()).filter(s => s);
+            
+            if (subDistrictArray.length === 1) {
+                // Single value - use original logic
+                const sanitizedSubDistrict = sanitizePattern(subDistrictArray[0]);
+                query += ` AND sub_district ILIKE $${paramCount}`;
+                countQuery += ` AND sub_district ILIKE $${paramCount}`;
+                params.push(`%${sanitizedSubDistrict}%`);
+                countParams.push(`%${sanitizedSubDistrict}%`);
+                paramCount++;
+            } else if (subDistrictArray.length > 1) {
+                // Multiple values - use OR logic
+                const orConditions = [];
+                const countOrConditions = [];
+                subDistrictArray.forEach(s => {
+                    const sanitizedSubDistrict = sanitizePattern(s);
+                    orConditions.push(`sub_district ILIKE $${paramCount}`);
+                    countOrConditions.push(`sub_district ILIKE $${paramCount}`);
+                    params.push(`%${sanitizedSubDistrict}%`);
+                    countParams.push(`%${sanitizedSubDistrict}%`);
+                    paramCount++;
+                });
+                query += ` AND (${orConditions.join(' OR ')})`;
+                countQuery += ` AND (${countOrConditions.join(' OR ')})`;
+            }
         }
 
         // 7. Area (Size) filter - Min (supports both min_size and size_min)
