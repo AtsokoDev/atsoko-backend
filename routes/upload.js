@@ -333,4 +333,168 @@ router.delete('/image/:filename', async (req, res) => {
     }
 });
 
+// POST /api/upload/tips-image - Upload featured image for tips article
+// Protected: Admin only (should add authentication middleware)
+router.post('/tips-image', upload.single('image'), handleUploadError, async (req, res) => {
+    try {
+        const { article_id } = req.body;
+
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                error: 'No image file provided'
+            });
+        }
+
+        // Ensure tips upload directory exists
+        const tipsUploadDir = path.join(__dirname, '../public/images/tips');
+        try {
+            await fs.access(tipsUploadDir);
+        } catch {
+            await fs.mkdir(tipsUploadDir, { recursive: true });
+        }
+
+        // Generate unique filename: tips_{timestamp}.webp
+        const timestamp = Date.now();
+        const filename = `tips_${timestamp}.webp`;
+        const filePath = path.join(tipsUploadDir, filename);
+
+        // Process image: compress and convert to WebP (no resize, no watermark)
+        const processedImage = await sharp(req.file.buffer)
+            .webp({ quality: 85 })
+            .toBuffer();
+
+        await fs.writeFile(filePath, processedImage);
+
+        // If article_id provided, update the tips table
+        if (article_id) {
+            try {
+                await pool.query(
+                    'UPDATE tips SET featured_image = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+                    [`/images/tips/${filename}`, parseInt(article_id)]
+                );
+            } catch (dbError) {
+                console.error('Database update error:', dbError);
+                // Continue even if DB update fails - image is already uploaded
+            }
+        }
+
+        res.json({
+            success: true,
+            message: 'Featured image uploaded successfully',
+            data: {
+                filename: filename,
+                url: `/images/tips/${filename}`,
+                full_url: `${req.protocol}://${req.get('host')}/images/tips/${filename}`,
+                article_id: article_id || null
+            }
+        });
+
+    } catch (error) {
+        console.error('Upload error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to upload image'
+        });
+    }
+});
+
+// POST /api/upload/tips-content-image - Upload image for tips article content (rich text editor)
+// Protected: Admin only (should add authentication middleware)
+router.post('/tips-content-image', upload.single('image'), handleUploadError, async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                error: 'No image file provided'
+            });
+        }
+
+        // Ensure tips upload directory exists
+        const tipsUploadDir = path.join(__dirname, '../public/images/tips');
+        try {
+            await fs.access(tipsUploadDir);
+        } catch {
+            await fs.mkdir(tipsUploadDir, { recursive: true });
+        }
+
+        // Generate unique filename: tips_content_{timestamp}.webp
+        const timestamp = Date.now();
+        const filename = `tips_content_${timestamp}.webp`;
+        const filePath = path.join(tipsUploadDir, filename);
+
+        // Process image: compress and convert to WebP (no resize, no watermark)
+        const processedImage = await sharp(req.file.buffer)
+            .webp({ quality: 80 })
+            .toBuffer();
+
+        await fs.writeFile(filePath, processedImage);
+
+        res.json({
+            success: true,
+            message: 'Content image uploaded successfully',
+            data: {
+                filename: filename,
+                url: `/images/tips/${filename}`,
+                full_url: `${req.protocol}://${req.get('host')}/images/tips/${filename}`
+            }
+        });
+
+    } catch (error) {
+        console.error('Upload error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to upload image'
+        });
+    }
+});
+
+// DELETE /api/upload/tips-image/:filename - Delete tips image
+// Protected: Admin only (should add authentication middleware)
+router.delete('/tips-image/:filename', async (req, res) => {
+    try {
+        const { filename } = req.params;
+
+        // Validate filename format (tips_*.webp or tips_content_*.webp)
+        const filenamePattern = /^tips(_content)?_\d+\.webp$/;
+        if (!filenamePattern.test(filename)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid filename format'
+            });
+        }
+
+        const tipsUploadDir = path.join(__dirname, '../public/images/tips');
+        const filePath = path.join(tipsUploadDir, filename);
+
+        // Check if file exists
+        try {
+            await fs.access(filePath);
+        } catch {
+            return res.status(404).json({
+                success: false,
+                error: 'Image not found'
+            });
+        }
+
+        // Delete the file
+        await fs.unlink(filePath);
+
+        res.json({
+            success: true,
+            message: 'Image deleted successfully',
+            data: {
+                filename: filename
+            }
+        });
+
+    } catch (error) {
+        console.error('Delete error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to delete image'
+        });
+    }
+});
+
 module.exports = router;

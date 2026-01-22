@@ -1,177 +1,713 @@
-# ✅ Tips API - สรุปการแก้ไขเสร็จสมบูรณ์
+# 📚 Tips API - สรุปสำหรับ Frontend Developer
 
-## 🎉 สถานะ: เสร็จสมบูรณ์และทดสอบแล้ว
+## � Oveนrview
 
-Server ทำงานได้ปกติแล้วครับ! ✅
+Tips API สำหรับจัดการบทความ/blog posts พร้อมระบบ upload รูปภาพ
 
----
-
-## 📝 สิ่งที่ทำเสร็จแล้ว
-
-### 1. ✅ Authentication & Authorization
-- เฉพาะ **Admin** เท่านั้นที่ POST/PUT/DELETE ได้
-- GET endpoints เปิดให้ทุกคนเข้าถึงได้
-- ใช้ JWT token authentication
-
-### 2. ✅ HTML Sanitization  
-- ติดตั้ง `sanitize-html`
-- Sanitize HTML อัตโนมัติก่อนบันทึก
-- ป้องกัน XSS attacks
-
-### 3. ✅ SQL Injection Fix
-- ใช้ parameterized queries ($1, $2, $3)
-
-### 4. ✅ Published Logic
-- Draft: `published_at = NULL`
-- Scheduled: `published_at = อนาคต`
-- Published: `published_at ≤ ปัจจุบัน`
-
-### 5. ✅ Slug Uniqueness
-- Database constraint `UNIQUE`
-
-### 6. ✅ Documentation
-- เอกสารครบถ้วน 4 ไฟล์
+**Base URL:** `http://localhost:3000`
 
 ---
 
-## 🔧 Dependencies
+## 📋 API Endpoints ทั้งหมด
 
-```bash
-npm install sanitize-html
+### 🔓 Public Endpoints (ไม่ต้อง login)
+
+#### 1. GET /api/tips - ดูรายการบทความ
+
+```http
+GET /api/tips?page=1&limit=20&published=true
 ```
 
-**เหตุผล:** ใช้ `sanitize-html` เพราะเป็น pure Node.js library ไม่มี dependency conflict
+**Query Parameters:**
+- `page` (number, optional) - หน้าที่ต้องการ (default: 1)
+- `limit` (number, optional) - จำนวนต่อหน้า (default: 20, max: 100)
+- `published` (boolean|string, optional) - กรองตามสถานะ
+  - `true` = เฉพาะที่ publish แล้ว (default)
+  - `false` = draft/scheduled
+  - `"all"` = ทั้งหมด
 
----
-
-## 🧪 ทดสอบแล้ว
-
-```bash
-# ✅ Server รันได้
-npm run dev
-
-# ✅ API ทำงานได้
-curl http://localhost:3000/api/tips?limit=1
-
-# Response:
+**Response:**
+```json
 {
   "success": true,
-  "data": [],
+  "data": [
+    {
+      "id": 1,
+      "slug": "my-article",
+      "title": "My Article Title",
+      "excerpt": "Short description",
+      "content": "<h1>HTML content</h1><p>Text...</p>",
+      "featured_image": "/images/tips/tips_1234567890.webp",
+      "author": "John Doe",
+      "published_at": "2025-01-20T10:00:00Z",
+      "created_at": "2025-01-20T09:00:00Z",
+      "updated_at": "2025-01-20T09:00:00Z"
+    }
+  ],
   "pagination": {
     "page": 1,
-    "limit": 1,
-    "total": 0,
-    "pages": 0
+    "limit": 20,
+    "total": 50,
+    "pages": 3
   }
 }
 ```
 
 ---
 
-## 📂 ไฟล์ที่แก้ไข
+#### 2. GET /api/tips/:slug - ดูบทความเดี่ยว
 
-### Backend
-1. **routes/tips.js** - เพิ่ม auth + sanitization
-2. **package.json** - เพิ่ม `sanitize-html`
-
-### Documentation
-1. **docs/TIPS_API_DOCUMENTATION.md** - เอกสารฉบับเต็ม (EN)
-2. **docs/TIPS_API_CHANGES_TH.md** - สรุปการเปลี่ยนแปลง (TH)
-3. **docs/TIPS_API_EXAMPLES.md** - ตัวอย่างการใช้งาน (EN)
-4. **TIPS_API_SUMMARY_TH.md** - สรุปแบบสั้น (TH)
-5. **TIPS_API_FINAL_SUMMARY.md** - ไฟล์นี้
-6. **api.md** - อัปเดต Tips API section
-
----
-
-## 🚀 วิธีใช้งาน
-
-### Public Endpoints (ไม่ต้อง login)
-
-```bash
-# ดูรายการบทความ
-GET /api/tips?page=1&limit=10
-
-# ดูบทความเดี่ยว
+```http
 GET /api/tips/my-article-slug
 ```
 
-### Admin Endpoints (ต้อง login)
-
-```bash
-# 1. Login
-POST /api/auth/login
+**Response:**
+```json
 {
-  "email": "admin@example.com",
-  "password": "password"
+  "success": true,
+  "data": {
+    "id": 1,
+    "slug": "my-article-slug",
+    "title": "My Article Title",
+    "excerpt": "Short description",
+    "content": "<h1>HTML content</h1>",
+    "featured_image": "/images/tips/tips_1234567890.webp",
+    "author": "John Doe",
+    "published_at": "2025-01-20T10:00:00Z",
+    "created_at": "2025-01-20T09:00:00Z",
+    "updated_at": "2025-01-20T09:00:00Z"
+  }
 }
+```
 
-# 2. สร้างบทความ
-POST /api/tips
-Headers: Authorization: Bearer <token>
+**Error (404):**
+```json
 {
-  "slug": "my-article",
-  "title": "My Article",
-  "content": "<h1>Title</h1><p>Content</p>",
-  "published_at": "2025-01-20T10:00:00Z"
+  "success": false,
+  "error": "Article not found"
 }
-
-# 3. แก้ไข
-PUT /api/tips/1
-Headers: Authorization: Bearer <token>
-{ "title": "Updated" }
-
-# 4. ลบ
-DELETE /api/tips/1
-Headers: Authorization: Bearer <token>
 ```
 
 ---
 
-## 🎨 Rich Text Editor (Frontend - ต้องทำต่อ)
+### 🔒 Admin Endpoints (ต้อง login + role = admin)
 
-### Admin Panel - ใช้ Quill.js
+#### 3. POST /api/tips - สร้างบทความใหม่
 
-```html
-<link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-<script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+```http
+POST /api/tips
+Headers:
+  Authorization: Bearer <jwt_token>
+  Content-Type: application/json
 
-<div id="editor"></div>
+Body:
+{
+  "slug": "my-article",              // required, ต้องไม่ซ้ำ
+  "title": "My Article Title",       // required
+  "content": "<h1>HTML content</h1>", // required
+  "excerpt": "Short description",    // optional
+  "featured_image": "/images/tips/tips_1234567890.webp", // optional
+  "author": "John Doe",              // optional
+  "published_at": "2025-01-20T10:00:00Z" // optional (null = draft)
+}
+```
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "slug": "my-article",
+    "title": "My Article Title",
+    // ... ฟิลด์อื่นๆ
+  },
+  "message": "Article created successfully"
+}
+```
+
+**Errors:**
+- `400` - Missing required fields (slug, title, content)
+- `401` - Access denied (ไม่มี token)
+- `403` - Insufficient permissions (ไม่ใช่ admin)
+- `409` - Slug already exists (slug ซ้ำ)
+
+---
+
+#### 4. PUT /api/tips/:id - แก้ไขบทความ
+
+```http
+PUT /api/tips/1
+Headers:
+  Authorization: Bearer <jwt_token>
+  Content-Type: application/json
+
+Body: (ส่งเฉพาะฟิลด์ที่ต้องการแก้)
+{
+  "title": "Updated Title",
+  "content": "<h1>Updated content</h1>",
+  "published_at": "2025-01-22T10:00:00Z"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "slug": "my-article",
+    "title": "Updated Title",
+    // ... ฟิลด์อื่นๆ
+  },
+  "message": "Article updated successfully"
+}
+```
+
+**Errors:**
+- `400` - Request body is empty / No valid fields to update
+- `401` - Access denied
+- `403` - Insufficient permissions
+- `404` - Article not found
+- `409` - Duplicate slug
+
+---
+
+#### 5. DELETE /api/tips/:id - ลบบทความ
+
+```http
+DELETE /api/tips/1
+Headers:
+  Authorization: Bearer <jwt_token>
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Article deleted successfully",
+  "data": {
+    "id": 1,
+    "slug": "my-article",
+    // ... ฟิลด์อื่นๆ
+  }
+}
+```
+
+**Errors:**
+- `401` - Access denied
+- `403` - Insufficient permissions
+- `404` - Article not found
+
+---
+
+## 🖼️ Image Upload Endpoints
+
+### 6. POST /api/upload/tips-image - Upload รูปหน้าปก
+
+```http
+POST /api/upload/tips-image
+Content-Type: multipart/form-data
+
+FormData:
+- image: <file> (required)
+- article_id: <number> (optional)
+```
+
+**Features:**
+- ✅ Compress รูปภาพ (เก็บขนาดเดิม)
+- ✅ แปลงเป็น WebP (quality 85%)
+- ✅ ไม่มี watermark
+- ✅ รองรับ JPEG, PNG, WebP, GIF
+- ✅ จำกัดขนาด 10MB
+- ✅ ถ้าส่ง article_id มา จะอัปเดต featured_image ใน database อัตโนมัติ
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Featured image uploaded successfully",
+  "data": {
+    "filename": "tips_1737532800000.webp",
+    "url": "/images/tips/tips_1737532800000.webp",
+    "full_url": "http://localhost:3000/images/tips/tips_1737532800000.webp",
+    "article_id": 123
+  }
+}
+```
+
+**Errors:**
+- `400` - No image file provided / Invalid file type / File size too large
+
+---
+
+### 7. POST /api/upload/tips-content-image - Upload รูปในบทความ
+
+```http
+POST /api/upload/tips-content-image
+Content-Type: multipart/form-data
+
+FormData:
+- image: <file> (required)
+```
+
+**Features:**
+- ✅ Compress รูปภาพ (เก็บขนาดเดิม)
+- ✅ แปลงเป็น WebP (quality 80%)
+- ✅ ไม่มี watermark
+- ✅ เหมาะสำหรับ Rich Text Editor
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Content image uploaded successfully",
+  "data": {
+    "filename": "tips_content_1737532800000.webp",
+    "url": "/images/tips/tips_content_1737532800000.webp",
+    "full_url": "http://localhost:3000/images/tips/tips_content_1737532800000.webp"
+  }
+}
+```
+
+---
+
+### 8. DELETE /api/upload/tips-image/:filename - ลบรูปภาพ
+
+```http
+DELETE /api/upload/tips-image/tips_1737532800000.webp
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Image deleted successfully",
+  "data": {
+    "filename": "tips_1737532800000.webp"
+  }
+}
+```
+
+**Errors:**
+- `400` - Invalid filename format
+- `404` - Image not found
+
+---
+
+## 🔑 Authentication
+
+### Login ก่อนใช้งาน Admin Endpoints
+
+```http
+POST /api/auth/login
+Content-Type: application/json
+
+Body:
+{
+  "email": "admin@example.com",
+  "password": "your_password"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": 1,
+    "email": "admin@example.com",
+    "role": "admin"
+  }
+}
+```
+
+**จากนั้นใช้ token ใน Header:**
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+---
+
+## 📅 Published Logic
+
+บทความมี 3 สถานะ:
+
+1. **Draft** - `published_at = null`
+   - ไม่แสดงใน public endpoints
+   - แสดงเฉพาะใน admin panel
+
+2. **Scheduled** - `published_at = วันที่อนาคต`
+   - ไม่แสดงใน public endpoints (ยัง)
+   - จะแสดงอัตโนมัติเมื่อถึงเวลา
+
+3. **Published** - `published_at ≤ ปัจจุบัน`
+   - แสดงใน public endpoints
+   - เรียงตาม published_at (ใหม่สุดก่อน)
+
+---
+
+## 💻 ตัวอย่างโค้ด Frontend
+
+### 1. ดูรายการบทความ (Vue.js)
+
+```vue
+<template>
+  <div>
+    <div v-for="article in articles" :key="article.id">
+      <img :src="article.featured_image" :alt="article.title">
+      <h2>{{ article.title }}</h2>
+      <p>{{ article.excerpt }}</p>
+      <router-link :to="`/tips/${article.slug}`">อ่านต่อ</router-link>
+    </div>
+    
+    <!-- Pagination -->
+    <button @click="prevPage" :disabled="page === 1">ก่อนหน้า</button>
+    <span>หน้า {{ page }} / {{ totalPages }}</span>
+    <button @click="nextPage" :disabled="page === totalPages">ถัดไป</button>
+  </div>
+</template>
 
 <script>
-const quill = new Quill('#editor', {
-  theme: 'snow',
-  modules: {
-    toolbar: [
-      [{ 'header': [1, 2, 3, false] }],
-      ['bold', 'italic', 'underline'],
-      ['link', 'image'],
-      [{ 'list': 'ordered'}, { 'list': 'bullet' }]
-    ]
+export default {
+  data() {
+    return {
+      articles: [],
+      page: 1,
+      limit: 10,
+      totalPages: 0
+    };
+  },
+  mounted() {
+    this.fetchArticles();
+  },
+  methods: {
+    async fetchArticles() {
+      const response = await fetch(
+        `http://localhost:3000/api/tips?page=${this.page}&limit=${this.limit}`
+      );
+      const data = await response.json();
+      
+      if (data.success) {
+        this.articles = data.data;
+        this.totalPages = data.pagination.pages;
+      }
+    },
+    prevPage() {
+      if (this.page > 1) {
+        this.page--;
+        this.fetchArticles();
+      }
+    },
+    nextPage() {
+      if (this.page < this.totalPages) {
+        this.page++;
+        this.fetchArticles();
+      }
+    }
   }
-});
-
-// เมื่อ Save
-const htmlContent = quill.root.innerHTML;
-// ส่งไปยัง API
+};
 </script>
 ```
 
-### Frontend Display
+---
 
-```html
-<!-- Vue -->
-<div v-html="article.content"></div>
+### 2. ดูบทความเดี่ยว (Vue.js)
 
-<!-- React -->
-<div dangerouslySetInnerHTML={{ __html: article.content }} />
+```vue
+<template>
+  <div v-if="article">
+    <img :src="article.featured_image" :alt="article.title">
+    <h1>{{ article.title }}</h1>
+    <p class="meta">
+      โดย {{ article.author }} | 
+      {{ formatDate(article.published_at) }}
+    </p>
+    
+    <!-- แสดง HTML content -->
+    <div v-html="article.content"></div>
+  </div>
+</template>
+
+<script>
+export default {
+  data() {
+    return {
+      article: null
+    };
+  },
+  mounted() {
+    this.fetchArticle();
+  },
+  methods: {
+    async fetchArticle() {
+      const slug = this.$route.params.slug;
+      const response = await fetch(`http://localhost:3000/api/tips/${slug}`);
+      const data = await response.json();
+      
+      if (data.success) {
+        this.article = data.data;
+      }
+    },
+    formatDate(dateString) {
+      return new Date(dateString).toLocaleDateString('th-TH');
+    }
+  }
+};
+</script>
+```
+
+---
+
+### 3. สร้างบทความ (Admin Panel - Vue.js)
+
+```vue
+<template>
+  <div>
+    <h1>สร้างบทความใหม่</h1>
+    
+    <form @submit.prevent="createArticle">
+      <!-- Slug -->
+      <div>
+        <label>Slug (URL):</label>
+        <input v-model="form.slug" required>
+      </div>
+      
+      <!-- Title -->
+      <div>
+        <label>หัวข้อ:</label>
+        <input v-model="form.title" required>
+      </div>
+      
+      <!-- Excerpt -->
+      <div>
+        <label>คำอธิบายสั้น:</label>
+        <textarea v-model="form.excerpt"></textarea>
+      </div>
+      
+      <!-- Featured Image -->
+      <div>
+        <label>รูปหน้าปก:</label>
+        <input type="file" @change="uploadFeaturedImage" accept="image/*">
+        <img v-if="form.featured_image" :src="form.featured_image" style="max-width: 200px;">
+      </div>
+      
+      <!-- Content (Rich Text Editor) -->
+      <div>
+        <label>เนื้อหา:</label>
+        <div id="editor"></div>
+      </div>
+      
+      <!-- Author -->
+      <div>
+        <label>ผู้เขียน:</label>
+        <input v-model="form.author">
+      </div>
+      
+      <!-- Published At -->
+      <div>
+        <label>เผยแพร่เมื่อ:</label>
+        <input type="datetime-local" v-model="form.published_at">
+        <small>เว้นว่างไว้ = Draft</small>
+      </div>
+      
+      <button type="submit">สร้างบทความ</button>
+    </form>
+  </div>
+</template>
+
+<script>
+import Quill from 'quill';
+import 'quill/dist/quill.snow.css';
+
+export default {
+  data() {
+    return {
+      quill: null,
+      form: {
+        slug: '',
+        title: '',
+        excerpt: '',
+        content: '',
+        featured_image: '',
+        author: '',
+        published_at: ''
+      }
+    };
+  },
+  mounted() {
+    this.initEditor();
+  },
+  methods: {
+    initEditor() {
+      this.quill = new Quill('#editor', {
+        theme: 'snow',
+        modules: {
+          toolbar: {
+            container: [
+              [{ 'header': [1, 2, 3, false] }],
+              ['bold', 'italic', 'underline'],
+              ['link', 'image'],
+              [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+              ['blockquote', 'code-block']
+            ],
+            handlers: {
+              image: this.imageHandler
+            }
+          }
+        }
+      });
+    },
+    
+    // Upload featured image
+    async uploadFeaturedImage(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      
+      const formData = new FormData();
+      formData.append('image', file);
+      
+      const response = await fetch('http://localhost:3000/api/upload/tips-image', {
+        method: 'POST',
+        body: formData
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        this.form.featured_image = data.data.url;
+      }
+    },
+    
+    // Upload content image (for Quill)
+    imageHandler() {
+      const input = document.createElement('input');
+      input.setAttribute('type', 'file');
+      input.setAttribute('accept', 'image/*');
+      input.click();
+      
+      input.onchange = async () => {
+        const file = input.files[0];
+        if (!file) return;
+        
+        const formData = new FormData();
+        formData.append('image', file);
+        
+        const response = await fetch('http://localhost:3000/api/upload/tips-content-image', {
+          method: 'POST',
+          body: formData
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          const range = this.quill.getSelection(true);
+          this.quill.insertEmbed(range.index, 'image', data.data.url);
+          this.quill.setSelection(range.index + 1);
+        }
+      };
+    },
+    
+    // Create article
+    async createArticle() {
+      // Get HTML content from Quill
+      this.form.content = this.quill.root.innerHTML;
+      
+      // Convert datetime-local to ISO string
+      if (this.form.published_at) {
+        this.form.published_at = new Date(this.form.published_at).toISOString();
+      } else {
+        this.form.published_at = null;
+      }
+      
+      const token = localStorage.getItem('token');
+      
+      const response = await fetch('http://localhost:3000/api/tips', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(this.form)
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        alert('สร้างบทความสำเร็จ!');
+        this.$router.push(`/tips/${data.data.slug}`);
+      } else {
+        alert('Error: ' + data.error);
+      }
+    }
+  }
+};
+</script>
+```
+
+---
+
+### 4. แก้ไขบทความ (Admin Panel)
+
+```javascript
+async updateArticle(articleId, updates) {
+  const token = localStorage.getItem('token');
+  
+  const response = await fetch(`http://localhost:3000/api/tips/${articleId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify(updates)
+  });
+  
+  const data = await response.json();
+  
+  if (data.success) {
+    console.log('Updated:', data.data);
+  }
+}
+
+// ตัวอย่างการใช้งาน
+updateArticle(1, {
+  title: 'Updated Title',
+  content: '<h1>New content</h1>'
+});
+```
+
+---
+
+### 5. ลบบทความ (Admin Panel)
+
+```javascript
+async deleteArticle(articleId) {
+  if (!confirm('แน่ใจว่าต้องการลบบทความนี้?')) return;
+  
+  const token = localStorage.getItem('token');
+  
+  const response = await fetch(`http://localhost:3000/api/tips/${articleId}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  
+  const data = await response.json();
+  
+  if (data.success) {
+    alert('ลบบทความสำเร็จ!');
+    // Redirect or refresh list
+  }
+}
 ```
 
 ---
 
 ## 🔒 Security Features
 
-### HTML Sanitization
+### 1. HTML Sanitization
+Backend จะ sanitize HTML อัตโนมัติก่อนบันทึก:
+
 ```javascript
 // Input (อันตราย)
 "<script>alert('XSS')</script><h1>Title</h1>"
@@ -180,99 +716,147 @@ const htmlContent = quill.root.innerHTML;
 "<h1>Title</h1>"
 ```
 
-### Tags ที่อนุญาต
+**Tags ที่อนุญาต:**
 - หัวข้อ: `h1, h2, h3, h4, h5, h6`
 - ข้อความ: `p, br, strong, em, u`
 - รายการ: `ul, ol, li`
-- อื่นๆ: `a, img, blockquote, code, pre, table`
+- อื่นๆ: `a, img, blockquote, code, pre, table, div, span`
+
+### 2. Authentication
+- ใช้ JWT token
+- Token expires ใน 15 นาที (ตรวจสอบใน middleware)
+- เฉพาะ role = `admin` เท่านั้นที่สร้าง/แก้ไข/ลบได้
+
+### 3. SQL Injection Protection
+- ใช้ parameterized queries ($1, $2, $3)
+- ไม่มี string interpolation
 
 ---
 
-## ✅ Checklist
+## 🚨 Error Handling
 
-### Backend (เสร็จแล้ว)
-- [x] เพิ่ม authentication middleware
-- [x] เพิ่ม authorization (admin only)
-- [x] ติดตั้ง sanitize-html
-- [x] Sanitize HTML ใน POST
-- [x] Sanitize HTML ใน PUT
-- [x] แก้ SQL injection bug
-- [x] เขียน documentation
-- [x] ทดสอบ server
+### Error Response Format
+```json
+{
+  "success": false,
+  "error": "Error message here"
+}
+```
 
-### Frontend (ต้องทำต่อ)
-- [ ] ติดตั้ง Quill.js
-- [ ] เปลี่ยน textarea → Editor ใน Admin Panel
-- [ ] เปลี่ยน `{{ }}` → `v-html` ใน Display Page
-- [ ] ทดสอบสร้าง/แก้ไขบทความ
-- [ ] ทดสอบแสดงผล HTML
+### Common Error Codes
+
+| Code | Error | สาเหตุ | แก้ไข |
+|------|-------|--------|------|
+| 400 | Missing required fields | ไม่ส่ง slug/title/content | ส่งครบทุกฟิลด์ที่ required |
+| 400 | Invalid page/limit | page/limit ไม่ถูกต้อง | ใช้ตัวเลขบวก |
+| 401 | Access denied | ไม่มี token | Login ก่อน |
+| 403 | Insufficient permissions | ไม่ใช่ admin | ใช้ admin account |
+| 404 | Article not found | ไม่มี article นี้ | ตรวจสอบ ID/slug |
+| 409 | Slug already exists | slug ซ้ำ | เปลี่ยน slug ใหม่ |
+| 500 | Database error | Server error | ลองใหม่อีกครั้ง |
 
 ---
 
-## 📚 เอกสารเพิ่มเติม
+## 📁 File Structure
 
-1. **docs/TIPS_API_DOCUMENTATION.md** - เอกสารฉบับเต็ม
-   - Database schema
-   - API endpoints ทั้งหมด
-   - Security features
-   - Rich text editor integration
+```
+public/
+└── images/
+    └── tips/
+        ├── tips_1737532800000.webp          (Featured image)
+        ├── tips_1737532801000.webp          (Featured image)
+        ├── tips_content_1737532802000.webp  (Content image)
+        └── tips_content_1737532803000.webp  (Content image)
+```
 
-2. **docs/TIPS_API_CHANGES_TH.md** - สรุปการเปลี่ยนแปลง
-   - สิ่งที่แก้ไข
-   - วิธีใช้งาน
-   - ตัวอย่างโค้ด
+---
 
-3. **docs/TIPS_API_EXAMPLES.md** - ตัวอย่างการใช้งาน
-   - cURL examples
-   - JavaScript/Fetch examples
-   - React/Vue examples
-   - Quill.js integration
-   - Error handling
+## ✅ Checklist สำหรับ Frontend
 
-4. **TIPS_API_SUMMARY_TH.md** - สรุปแบบสั้น
-   - Overview
-   - Quick start guide
+### หน้า Public (ไม่ต้อง login)
+- [ ] หน้ารายการบทความ (GET /api/tips)
+  - [ ] แสดงรายการบทความ
+  - [ ] Pagination
+  - [ ] แสดงรูป featured_image
+  - [ ] Link ไปหน้าบทความเดี่ยว
+  
+- [ ] หน้าบทความเดี่ยว (GET /api/tips/:slug)
+  - [ ] แสดงหัวข้อ, ผู้เขียน, วันที่
+  - [ ] แสดงรูป featured_image
+  - [ ] แสดง content ด้วย v-html
+  - [ ] Handle 404 (บทความไม่เจอ)
+
+### หน้า Admin (ต้อง login)
+- [ ] Login page (POST /api/auth/login)
+  - [ ] Form login
+  - [ ] เก็บ token ใน localStorage
+  - [ ] Redirect หลัง login สำเร็จ
+  
+- [ ] สร้างบทความ (POST /api/tips)
+  - [ ] Form ครบทุกฟิลด์
+  - [ ] Rich Text Editor (Quill.js)
+  - [ ] Upload featured image
+  - [ ] Upload content images (ใน editor)
+  - [ ] เลือก published_at (หรือเว้นว่าง = draft)
+  - [ ] Handle errors
+  
+- [ ] แก้ไขบทความ (PUT /api/tips/:id)
+  - [ ] โหลดข้อมูลเดิม
+  - [ ] Form แก้ไข
+  - [ ] Rich Text Editor
+  - [ ] Upload รูปใหม่
+  - [ ] Save changes
+  
+- [ ] ลบบทความ (DELETE /api/tips/:id)
+  - [ ] Confirm dialog
+  - [ ] ลบและ redirect
 
 ---
 
 ## 🎯 สรุป
 
-### ✅ Backend เสร็จสมบูรณ์
-1. Authentication & Authorization ทำงานได้
-2. HTML Sanitization ป้องกัน XSS
-3. SQL Injection แก้ไขแล้ว
-4. Published logic ทำงานถูกต้อง
-5. Slug uniqueness ทำงานถูกต้อง
-6. Server รันได้ปกติ
-7. API ทดสอบแล้วทำงานได้
+### ✅ Backend พร้อมใช้งาน
+1. ✅ Tips CRUD API (GET, POST, PUT, DELETE)
+2. ✅ Image Upload API (featured + content)
+3. ✅ Authentication & Authorization
+4. ✅ HTML Sanitization (ป้องกัน XSS)
+5. ✅ SQL Injection Protection
+6. ✅ Published Logic (draft/scheduled/published)
+7. ✅ Pagination
+8. ✅ Error Handling
 
-### ⏳ Frontend ต้องทำต่อ
-1. เพิ่ม Rich Text Editor ใน Admin Panel
-2. แสดง HTML ใน Frontend Display
-
-### ❌ ไม่ต้องแก้
-- Database schema (ใช้เดิมได้)
-- Backend API logic (เสร็จแล้ว)
-- Response format (เหมือนเดิม)
-
----
-
-## 🚀 ขั้นตอนต่อไป
-
-**สำหรับ Frontend Developer:**
-
-1. ติดตั้ง Quill.js
-2. แก้ไข Admin Panel (เปลี่ยน textarea → Editor)
-3. แก้ไข Display Page (ใช้ v-html)
-4. ทดสอบการทำงาน
-
-**Backend พร้อมใช้งานแล้ว!** 🎉
+### 📝 Frontend ต้องทำ
+1. หน้ารายการบทความ (public)
+2. หน้าบทความเดี่ยว (public)
+3. Login page (admin)
+4. สร้างบทความ (admin)
+5. แก้ไขบทความ (admin)
+6. ลบบทความ (admin)
+7. Rich Text Editor integration (Quill.js)
+8. Image upload integration
 
 ---
 
-## 📞 ติดต่อ
+## 📚 เอกสารเพิ่มเติม
 
-มีคำถามเพิ่มเติม? ดูเอกสารได้ที่:
-- `docs/TIPS_API_DOCUMENTATION.md`
-- `docs/TIPS_API_EXAMPLES.md`
-- `TIPS_API_SUMMARY_TH.md`
+- **TIPS_IMAGE_UPLOAD_API.md** - รายละเอียด Image Upload API
+- **docs/TIPS_API_DOCUMENTATION.md** - เอกสารฉบับเต็ม (EN)
+- **docs/TIPS_API_EXAMPLES.md** - ตัวอย่างเพิ่มเติม (EN)
+- **Frontend_TEST/tips-image-upload-test.html** - หน้าทดสอบ upload
+
+---
+
+## 🚀 เริ่มต้นใช้งาน
+
+```bash
+# 1. Start server
+npm run dev
+
+# 2. Test API
+curl http://localhost:3000/api/tips
+
+# 3. Test image upload
+open Frontend_TEST/tips-image-upload-test.html
+```
+
+**พร้อมทำ Frontend แล้ว!** 🎉
