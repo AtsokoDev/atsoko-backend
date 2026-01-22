@@ -225,60 +225,52 @@ router.get('/location/:id', async (req, res) => {
 
 /**
  * GET /api/options/features
- * Returns all features with multi-language names
- * Query: ?category=feature|zone (optional, filter by category)
+ * Returns all features (category='feature') from master_features
  */
 router.get('/features', async (req, res) => {
     try {
-        // Fetch distinct features from properties table
-        const result = await pool.query('SELECT DISTINCT features FROM properties');
-        const uniqueSet = new Set();
-
-        result.rows.forEach(row => {
-            if (!row.features) return;
-            let list = [];
-            // Handle JSON string or pipe/comma separated
-            if (row.features.trim().startsWith('[')) {
-                try {
-                    list = JSON.parse(row.features);
-                } catch (e) {
-                    list = [row.features];
-                }
-            } else {
-                list = row.features.split(/[|,]/);
-            }
-
-            list.forEach(item => {
-                let trimmed = item.trim();
-                // Remove surrounding quotes if any
-                if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
-                    trimmed = trimmed.slice(1, -1);
-                }
-                // Filter out invalid or junk data like '99' or JSON artifacts
-                if (trimmed &&
-                    trimmed !== '99' &&
-                    !trimmed.startsWith('{') &&
-                    !trimmed.includes('{\\"')
-                ) {
-                    uniqueSet.add(trimmed);
-                }
-            });
-        });
-
-        const sorted = Array.from(uniqueSet).sort();
+        const result = await pool.query(
+            "SELECT id, name FROM master_features WHERE category = 'feature' ORDER BY id"
+        );
 
         res.json({
             success: true,
-            data: sorted.map((name, index) => ({
-                id: index + 1,
-                name_en: name,
-                name_th: name, // Default to name_en if no translation
-                name_zh: name,
-                name: { en: name, th: name, zh: name }
+            data: result.rows.map(row => ({
+                id: row.id,
+                name_en: row.name.en,
+                name_th: row.name.th,
+                name_zh: row.name.zh,
+                name: row.name
             }))
         });
     } catch (error) {
         console.error('Error fetching features:', error);
+        res.status(500).json({ success: false, error: 'Database error' });
+    }
+});
+
+/**
+ * GET /api/options/zone-types
+ * Returns all zone types (category='zone') from master_features
+ */
+router.get('/zone-types', async (req, res) => {
+    try {
+        const result = await pool.query(
+            "SELECT id, name FROM master_features WHERE category = 'zone' ORDER BY id"
+        );
+
+        res.json({
+            success: true,
+            data: result.rows.map(row => ({
+                id: row.id,
+                name_en: row.name.en,
+                name_th: row.name.th,
+                name_zh: row.name.zh,
+                name: row.name
+            }))
+        });
+    } catch (error) {
+        console.error('Error fetching zone types:', error);
         res.status(500).json({ success: false, error: 'Database error' });
     }
 });
