@@ -341,17 +341,12 @@ router.get('/', optionalAuth, async (req, res) => {
             paramCount++;
         }
 
-        // 10. Features filter - Array support
+        // 10. Features filter - Array support (expects JSON Array from frontend)
         if (features) {
-            // Support both comma-separated string and array
-            // Normalize to Title Case to match database standard (e.g. "parking" -> "Parking")
-            const toTitleCase = (str) => str.toLowerCase().replace(/\b\w/g, s => s.toUpperCase());
-            const rawArray = Array.isArray(features) ? features : features.split(',').map(f => f.trim());
-            const featuresArray = rawArray.map(f => toTitleCase(f));
+            // Support both JSON array and comma-separated string
+            const featuresArray = Array.isArray(features) ? features : features.split(',').map(f => f.trim());
 
             // Use JSONB contains operator (@>) to check if all requested features exist
-            // Cast text column to jsonb only if it looks like a JSON array (starts with [)
-            // This prevents "invalid input syntax for type json" errors on empty strings
             query += ` AND (features LIKE '[%]' AND features::jsonb @> $${paramCount}::jsonb)`;
             countQuery += ` AND (features LIKE '[%]' AND features::jsonb @> $${paramCount}::jsonb)`;
             params.push(JSON.stringify(featuresArray));
@@ -359,26 +354,18 @@ router.get('/', optionalAuth, async (req, res) => {
             paramCount++;
         }
 
-        // 11. Labels / Zone Type Filter (Supports pipe-separated values like "Zone A|Zone B")
+        // 11. Labels / Zone Type Filter (expects JSON Array, stored as JSON Array string)
         const effectiveLabels = labels || zone_type;
         if (effectiveLabels) {
-            // Normalize to array
-            const labelsArray = Array.isArray(effectiveLabels)
-                ? effectiveLabels
-                : effectiveLabels.split(',').map(l => l.trim());
+            // Support both JSON array and comma-separated string
+            const labelsArray = Array.isArray(effectiveLabels) ? effectiveLabels : effectiveLabels.split(',').map(l => l.trim());
 
-            // For each requested label, checking if it exists inside the label string using ILIKE
-            // Logic: AND (Must have ALL selected zones) - standard narrowing filter behavior
-            labelsArray.forEach(label => {
-                if (label) {
-                    const sanitizedLabel = sanitizePattern(label);
-                    query += ` AND labels ILIKE $${paramCount}`;
-                    countQuery += ` AND labels ILIKE $${paramCount}`;
-                    params.push(`%${sanitizedLabel}%`);
-                    countParams.push(`%${sanitizedLabel}%`);
-                    paramCount++;
-                }
-            });
+            // Use JSONB contains operator (@>) - same as features
+            query += ` AND (labels LIKE '[%]' AND labels::jsonb @> $${paramCount}::jsonb)`;
+            countQuery += ` AND (labels LIKE '[%]' AND labels::jsonb @> $${paramCount}::jsonb)`;
+            params.push(JSON.stringify(labelsArray));
+            countParams.push(JSON.stringify(labelsArray));
+            paramCount++;
         }
 
         // 10b. Single Feature filter (frontend) - ILIKE search for single feature
@@ -421,14 +408,17 @@ router.get('/', optionalAuth, async (req, res) => {
             paramCount++;
         }
 
-        // 13. Floor Load filter (NEW)
+        // 13. Floor Load filter - Minimum logic (>= selected value)
         if (floor_load) {
-            const sanitizedFloorLoad = sanitizePattern(floor_load);
-            query += ` AND floor_load ILIKE $${paramCount}`;
-            countQuery += ` AND floor_load ILIKE $${paramCount}`;
-            params.push(`%${sanitizedFloorLoad}%`);
-            countParams.push(`%${sanitizedFloorLoad}%`);
-            paramCount++;
+            const minFloorLoad = parseFloat(floor_load);
+            if (!isNaN(minFloorLoad)) {
+                // Extract number from floor_load text (e.g., "3 Ton/sqm" -> 3) and compare >= minimum
+                query += ` AND CAST(NULLIF(REGEXP_REPLACE(floor_load, '[^0-9.]', '', 'g'), '') AS DECIMAL) >= $${paramCount}`;
+                countQuery += ` AND CAST(NULLIF(REGEXP_REPLACE(floor_load, '[^0-9.]', '', 'g'), '') AS DECIMAL) >= $${paramCount}`;
+                params.push(minFloorLoad);
+                countParams.push(minFloorLoad);
+                paramCount++;
+            }
         }
 
         // Add ordering and pagination
@@ -729,6 +719,28 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
         }
 
         // ========================================================================
+        // Special handling for labels - ensure it's stored as valid JSON string
+        // ========================================================================
+        if (data.labels !== undefined) {
+            if (Array.isArray(data.labels)) {
+                data.labels = JSON.stringify(data.labels);
+            } else if (typeof data.labels === 'object' && data.labels !== null) {
+                data.labels = JSON.stringify(Object.values(data.labels));
+            } else if (typeof data.labels === 'string') {
+                // If it's already a string, check if it's valid JSON
+                try {
+                    JSON.parse(data.labels);
+                    // Valid JSON, keep as is
+                } catch {
+                    // Not valid JSON, treat as pipe/comma-separated and convert
+                    data.labels = JSON.stringify(data.labels.split(/[|,]/).map(l => l.trim()).filter(l => l));
+                }
+            } else {
+                data.labels = '[]';
+            }
+        }
+
+        // ========================================================================
         // Special handling for images - ensure it's stored as valid JSON string
         // ========================================================================
         if (data.images !== undefined) {
@@ -1000,6 +1012,26 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
                     } catch {
                         // Not valid JSON, treat as comma-separated and convert
                         value = JSON.stringify(value.split(',').map(f => f.trim()).filter(f => f));
+                    }
+                } else {
+                    value = '[]';
+                }
+            }
+
+            // Special handling for labels - ensure it's a proper array (same as features)
+            if (field === 'labels') {
+                if (Array.isArray(value)) {
+                    value = JSON.stringify(value);
+                } else if (typeof value === 'object' && value !== null) {
+                    value = JSON.stringify(Object.values(value));
+                } else if (typeof value === 'string') {
+                    // If it's a string, check if it's valid JSON first
+                    try {
+                        JSON.parse(value);
+                        // Valid JSON, keep as is
+                    } catch {
+                        // Not valid JSON, treat as pipe/comma-separated and convert
+                        value = JSON.stringify(value.split(/[|,]/).map(l => l.trim()).filter(l => l));
                     }
                 } else {
                     value = '[]';
