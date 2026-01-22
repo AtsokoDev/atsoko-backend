@@ -379,10 +379,11 @@ router.get('/', optionalAuth, async (req, res) => {
         }
 
         // 11. Clear Height filter (NEW) - Min
+        // clear_height stored as VARCHAR like "6m", "7m" - extract number for comparison
         if (min_height) {
             const validatedMinHeight = validateNumber(min_height, 'min_height');
-            query += ` AND clear_height >= $${paramCount}`;
-            countQuery += ` AND clear_height >= $${paramCount}`;
+            query += ` AND clear_height IS NOT NULL AND clear_height != '' AND CAST(REGEXP_REPLACE(clear_height, '[^0-9]', '', 'g') AS INTEGER) >= $${paramCount}`;
+            countQuery += ` AND clear_height IS NOT NULL AND clear_height != '' AND CAST(REGEXP_REPLACE(clear_height, '[^0-9]', '', 'g') AS INTEGER) >= $${paramCount}`;
             params.push(validatedMinHeight);
             countParams.push(validatedMinHeight);
             paramCount++;
@@ -391,8 +392,8 @@ router.get('/', optionalAuth, async (req, res) => {
         // 12. Clear Height filter - Max
         if (max_height) {
             const validatedMaxHeight = validateNumber(max_height, 'max_height');
-            query += ` AND clear_height <= $${paramCount}`;
-            countQuery += ` AND clear_height <= $${paramCount}`;
+            query += ` AND clear_height IS NOT NULL AND clear_height != '' AND CAST(REGEXP_REPLACE(clear_height, '[^0-9]', '', 'g') AS INTEGER) <= $${paramCount}`;
+            countQuery += ` AND clear_height IS NOT NULL AND clear_height != '' AND CAST(REGEXP_REPLACE(clear_height, '[^0-9]', '', 'g') AS INTEGER) <= $${paramCount}`;
             params.push(validatedMaxHeight);
             countParams.push(validatedMaxHeight);
             paramCount++;
