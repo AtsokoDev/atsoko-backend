@@ -13,6 +13,18 @@ const validateInteger = (value, fieldName, min = 1, max = null) => {
     return num;
 };
 
+// Sanitize options for HTML content
+const sanitizeOptions = {
+    allowedTags: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                  'ul', 'ol', 'li', 'a', 'img', 'blockquote', 'code', 'pre', 'hr', 'table',
+                  'thead', 'tbody', 'tr', 'th', 'td', 'div', 'span'],
+    allowedAttributes: {
+        'a': ['href', 'title', 'target', 'rel'],
+        'img': ['src', 'alt', 'title'],
+        '*': ['class', 'id']
+    }
+};
+
 // GET /api/tips - List all articles
 // Public endpoint - no authentication required
 router.get('/', async (req, res) => {
@@ -20,7 +32,8 @@ router.get('/', async (req, res) => {
         const {
             page = 1,
             limit = 20,
-            published = true // Filter by published status
+            published = true,
+            sort = 'published_at' // 'published_at' (default) or 'display_order'
         } = req.query;
 
         const validatedPage = validateInteger(page, 'page', 1);
@@ -44,8 +57,14 @@ router.get('/', async (req, res) => {
             }
         }
 
-        // Order by published date (newest first)
-        query += ` ORDER BY COALESCE(published_at, created_at) DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+        // Order by selected sort option
+        if (sort === 'display_order') {
+            query += ` ORDER BY display_order ASC, COALESCE(published_at, created_at) DESC`;
+        } else {
+            query += ` ORDER BY COALESCE(published_at, created_at) DESC`;
+        }
+
+        query += ` LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
         params.push(validatedLimit, (validatedPage - 1) * validatedLimit);
 
         const [result, countResult] = await Promise.all([
@@ -63,7 +82,8 @@ router.get('/', async (req, res) => {
                 limit: validatedLimit,
                 total,
                 pages: Math.ceil(total / validatedLimit)
-            }
+            },
+            sort: sort
         });
     } catch (error) {
         console.error(error);
@@ -113,7 +133,10 @@ router.post('/', authenticate, authorize(['admin']), async (req, res) => {
             content,
             featured_image,
             author,
-            published_at
+            published_at,
+            display_order,
+            category,
+            tags
         } = req.body;
 
         // Validate required fields
@@ -124,23 +147,30 @@ router.post('/', authenticate, authorize(['admin']), async (req, res) => {
             });
         }
 
-        // Sanitize HTML content to prevent XSS attacks
-        const sanitizedContent = sanitizeHtml(content, {
-            allowedTags: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 
-                         'ul', 'ol', 'li', 'a', 'img', 'blockquote', 'code', 'pre', 'hr', 'table', 
-                         'thead', 'tbody', 'tr', 'th', 'td', 'div', 'span'],
-            allowedAttributes: {
-                'a': ['href', 'title', 'target', 'rel'],
-                'img': ['src', 'alt', 'title'],
-                '*': ['class', 'id']
-            }
-        });
+        // Sanitize HTML content
+        const sanitizedContent = sanitizeHtml(content, sanitizeOptions);
+
+        // Handle tags - convert to JSON string if array
+        let tagsValue = tags;
+        if (Array.isArray(tags)) {
+            tagsValue = JSON.stringify(tags);
+        } else if (typeof tags === 'string' && !tags.startsWith('[')) {
+            // Comma-separated string to JSON array
+            tagsValue = JSON.stringify(tags.split(',').map(t => t.trim()).filter(t => t));
+        }
+
+        // If display_order not provided, get max + 1
+        let finalDisplayOrder = display_order;
+        if (finalDisplayOrder === undefined || finalDisplayOrder === null) {
+            const maxResult = await pool.query('SELECT COALESCE(MAX(display_order), 0) + 1 as next_order FROM tips');
+            finalDisplayOrder = maxResult.rows[0].next_order;
+        }
 
         const result = await pool.query(
-            `INSERT INTO tips (slug, title, excerpt, content, featured_image, author, published_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
+            `INSERT INTO tips (slug, title, excerpt, content, featured_image, author, published_at, display_order, category, tags)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
              RETURNING *`,
-            [slug, title, excerpt, sanitizedContent, featured_image, author, published_at]
+            [slug, title, excerpt, sanitizedContent, featured_image, author, published_at, finalDisplayOrder, category, tagsValue]
         );
 
         res.status(201).json({
@@ -159,6 +189,7 @@ router.post('/', authenticate, authorize(['admin']), async (req, res) => {
         res.status(500).json({ success: false, error: 'Database error' });
     }
 });
+
 
 // PUT /api/tips/:id - Update article
 // Protected: Admin only
@@ -181,7 +212,10 @@ router.put('/:id', authenticate, authorize(['admin']), async (req, res) => {
             'content',
             'featured_image',
             'author',
-            'published_at'
+            'published_at',
+            'display_order',
+            'category',
+            'tags'
         ];
 
         const fieldsToUpdate = Object.keys(data).filter(key => allowedFields.includes(key));
@@ -198,21 +232,20 @@ router.put('/:id', authenticate, authorize(['admin']), async (req, res) => {
         let idx = 1;
 
         fieldsToUpdate.forEach(field => {
-            // Sanitize content if it's being updated
+            let value = data[field];
+            
             if (field === 'content') {
-                params.push(sanitizeHtml(data[field], {
-                    allowedTags: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 
-                                 'ul', 'ol', 'li', 'a', 'img', 'blockquote', 'code', 'pre', 'hr', 'table', 
-                                 'thead', 'tbody', 'tr', 'th', 'td', 'div', 'span'],
-                    allowedAttributes: {
-                        'a': ['href', 'title', 'target', 'rel'],
-                        'img': ['src', 'alt', 'title'],
-                        '*': ['class', 'id']
-                    }
-                }));
-            } else {
-                params.push(data[field]);
+                value = sanitizeHtml(value, sanitizeOptions);
+            } else if (field === 'tags') {
+                // Handle tags - convert to JSON string if array
+                if (Array.isArray(value)) {
+                    value = JSON.stringify(value);
+                } else if (typeof value === 'string' && !value.startsWith('[')) {
+                    value = JSON.stringify(value.split(',').map(t => t.trim()).filter(t => t));
+                }
             }
+            
+            params.push(value);
             setClauses.push(`"${field}" = $${idx}`);
             idx++;
         });
@@ -250,6 +283,65 @@ router.put('/:id', authenticate, authorize(['admin']), async (req, res) => {
                 error: 'Duplicate slug'
             });
         }
+        res.status(500).json({ success: false, error: 'Database error' });
+    }
+});
+
+// POST /api/tips/reorder - Reorder multiple articles at once
+// Protected: Admin only
+router.post('/reorder', authenticate, authorize(['admin']), async (req, res) => {
+    try {
+        const { items } = req.body;
+
+        // Validate input: expect array of { id, display_order }
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'items array is required with format: [{ id, display_order }, ...]'
+            });
+        }
+
+        // Validate each item
+        for (const item of items) {
+            if (!item.id || item.display_order === undefined) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Each item must have id and display_order'
+                });
+            }
+        }
+
+        // Use transaction for atomic update
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            const updatedItems = [];
+            for (const item of items) {
+                const result = await client.query(
+                    'UPDATE tips SET display_order = $1, updated_at = NOW() WHERE id = $2 RETURNING id, title, display_order',
+                    [item.display_order, item.id]
+                );
+                if (result.rows.length > 0) {
+                    updatedItems.push(result.rows[0]);
+                }
+            }
+
+            await client.query('COMMIT');
+
+            res.json({
+                success: true,
+                message: `${updatedItems.length} articles reordered successfully`,
+                data: updatedItems
+            });
+        } catch (txError) {
+            await client.query('ROLLBACK');
+            throw txError;
+        } finally {
+            client.release();
+        }
+    } catch (error) {
+        console.error(error);
         res.status(500).json({ success: false, error: 'Database error' });
     }
 });
