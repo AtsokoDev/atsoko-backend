@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS properties (
   price_alternative DECIMAL(12, 2),
   approve_status VARCHAR(50),
   post_modified_date TIMESTAMP,
+  category VARCHAR(100),
+  tags TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -61,6 +63,7 @@ CREATE TABLE IF NOT EXISTS tips (
   featured_image VARCHAR(500),
   author VARCHAR(255),
   published_at TIMESTAMP,
+  display_order INTEGER DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -68,6 +71,7 @@ CREATE TABLE IF NOT EXISTS tips (
 -- Create indexes for tips
 CREATE INDEX idx_tips_slug ON tips(slug);
 CREATE INDEX idx_tips_published_at ON tips(published_at);
+CREATE INDEX idx_tips_display_order ON tips(display_order);
 
 -- Create faq table for frequently asked questions
 CREATE TABLE IF NOT EXISTS faq (
