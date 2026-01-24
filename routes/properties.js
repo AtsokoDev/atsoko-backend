@@ -646,7 +646,10 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
             "subdistrict_id",
             "title_en",
             "title_th",
-            "title_zh"
+            "title_zh",
+            // Category and Tags
+            "category",
+            "tags"
         ];
 
         // Filter only allowed fields from request
@@ -760,6 +763,28 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
                 }
             } else {
                 data.images = '[]';
+            }
+        }
+
+        // ========================================================================
+        // Special handling for tags - ensure it's stored as valid JSON string
+        // ========================================================================
+        if (data.tags !== undefined) {
+            if (Array.isArray(data.tags)) {
+                data.tags = JSON.stringify(data.tags);
+            } else if (typeof data.tags === 'object' && data.tags !== null) {
+                data.tags = JSON.stringify(Object.values(data.tags));
+            } else if (typeof data.tags === 'string') {
+                // If it's already a string, check if it's valid JSON
+                try {
+                    JSON.parse(data.tags);
+                    // Valid JSON, keep as is
+                } catch {
+                    // Not valid JSON, treat as comma-separated and convert
+                    data.tags = JSON.stringify(data.tags.split(',').map(t => t.trim()).filter(t => t));
+                }
+            } else {
+                data.tags = '[]';
             }
         }
 
@@ -960,7 +985,10 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
             "subdistrict_id",
             "title_en",
             "title_th",
-            "title_zh"
+            "title_zh",
+            // Category and Tags
+            "category",
+            "tags"
         ];
 
         // Only admin can change approve_status and agent_team
@@ -1045,6 +1073,26 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
                     value = JSON.stringify(value);
                 } else if (typeof value === 'object' && value !== null) {
                     value = JSON.stringify(Object.values(value));
+                } else {
+                    value = '[]';
+                }
+            }
+
+            // Special handling for tags - ensure it's a proper array
+            if (field === 'tags') {
+                if (Array.isArray(value)) {
+                    value = JSON.stringify(value);
+                } else if (typeof value === 'object' && value !== null) {
+                    value = JSON.stringify(Object.values(value));
+                } else if (typeof value === 'string') {
+                    // If it's a string, check if it's valid JSON first
+                    try {
+                        JSON.parse(value);
+                        // Valid JSON, keep as is
+                    } catch {
+                        // Not valid JSON, treat as comma-separated and convert
+                        value = JSON.stringify(value.split(',').map(t => t.trim()).filter(t => t));
+                    }
                 } else {
                     value = '[]';
                 }
