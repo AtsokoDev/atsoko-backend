@@ -1,6 +1,25 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
+const sanitizeHtml = require('sanitize-html');
+
+// Sanitize options for HTML content (same as tips)
+const sanitizeOptions = {
+    allowedTags: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'ul', 'ol', 'li', 'a', 'img', 'blockquote', 'code', 'pre', 'hr', 'table',
+        'thead', 'tbody', 'tr', 'th', 'td', 'div', 'span'],
+    allowedAttributes: {
+        'a': ['href', 'title', 'target', 'rel'],
+        'img': ['src', 'alt', 'title'],
+        '*': ['class', 'id', 'style']
+    },
+    // Whitelist only safe CSS properties for text alignment
+    allowedStyles: {
+        '*': {
+            'text-align': [/^left$/, /^right$/, /^center$/, /^justify$/]
+        }
+    }
+};
 
 // Helper function to validate integer
 const validateInteger = (value, fieldName, min = 1, max = null) => {
@@ -126,11 +145,14 @@ router.post('/', async (req, res) => {
             });
         }
 
+        // Sanitize HTML content in answer
+        const sanitizedAnswer = sanitizeHtml(answer, sanitizeOptions);
+
         const result = await pool.query(
             `INSERT INTO faq (question, answer, category, display_order, is_active)
              VALUES ($1, $2, $3, $4, $5)
              RETURNING *`,
-            [question, answer, category, display_order, is_active]
+            [question, sanitizedAnswer, category, display_order, is_active]
         );
 
         res.status(201).json({
@@ -180,8 +202,15 @@ router.put('/:id', async (req, res) => {
         let idx = 1;
 
         fieldsToUpdate.forEach(field => {
+            let value = data[field];
+
+            // Sanitize HTML content in answer
+            if (field === 'answer') {
+                value = sanitizeHtml(value, sanitizeOptions);
+            }
+
             setClauses.push(`"${field}" = $${idx}`);
-            params.push(data[field]);
+            params.push(value);
             idx++;
         });
 
