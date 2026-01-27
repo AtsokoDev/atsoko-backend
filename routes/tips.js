@@ -16,12 +16,18 @@ const validateInteger = (value, fieldName, min = 1, max = null) => {
 // Sanitize options for HTML content
 const sanitizeOptions = {
     allowedTags: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-                  'ul', 'ol', 'li', 'a', 'img', 'blockquote', 'code', 'pre', 'hr', 'table',
-                  'thead', 'tbody', 'tr', 'th', 'td', 'div', 'span'],
+        'ul', 'ol', 'li', 'a', 'img', 'blockquote', 'code', 'pre', 'hr', 'table',
+        'thead', 'tbody', 'tr', 'th', 'td', 'div', 'span'],
     allowedAttributes: {
         'a': ['href', 'title', 'target', 'rel'],
         'img': ['src', 'alt', 'title'],
-        '*': ['class', 'id']
+        '*': ['class', 'id', 'style']
+    },
+    // Whitelist only safe CSS properties for text alignment
+    allowedStyles: {
+        '*': {
+            'text-align': [/^left$/, /^right$/, /^center$/, /^justify$/]
+        }
     }
 };
 
@@ -233,7 +239,7 @@ router.put('/:id', authenticate, authorize(['admin']), async (req, res) => {
 
         fieldsToUpdate.forEach(field => {
             let value = data[field];
-            
+
             if (field === 'content') {
                 value = sanitizeHtml(value, sanitizeOptions);
             } else if (field === 'tags') {
@@ -244,7 +250,7 @@ router.put('/:id', authenticate, authorize(['admin']), async (req, res) => {
                     value = JSON.stringify(value.split(',').map(t => t.trim()).filter(t => t));
                 }
             }
-            
+
             params.push(value);
             setClauses.push(`"${field}" = $${idx}`);
             idx++;
