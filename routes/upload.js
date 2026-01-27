@@ -339,14 +339,7 @@ router.delete('/image/:filename', async (req, res) => {
 router.post('/tips-image', upload.single('image'), handleUploadError, async (req, res) => {
     try {
         const { article_id } = req.body;
-
-        // article_id is required for proper image tracking
-        if (!article_id) {
-            return res.status(400).json({
-                success: false,
-                error: 'article_id is required'
-            });
-        }
+        // article_id is optional now
 
         if (!req.file) {
             return res.status(400).json({
@@ -355,13 +348,15 @@ router.post('/tips-image', upload.single('image'), handleUploadError, async (req
             });
         }
 
-        // Verify article exists
-        const articleCheck = await pool.query('SELECT id FROM tips WHERE id = $1', [parseInt(article_id)]);
-        if (articleCheck.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                error: 'Article not found'
-            });
+        // Verify article exists IF article_id is provided
+        if (article_id) {
+            const articleCheck = await pool.query('SELECT id FROM tips WHERE id = $1', [parseInt(article_id)]);
+            if (articleCheck.rows.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Article not found'
+                });
+            }
         }
 
         // Ensure tips upload directory exists
@@ -372,9 +367,10 @@ router.post('/tips-image', upload.single('image'), handleUploadError, async (req
             await fs.mkdir(tipsUploadDir, { recursive: true });
         }
 
-        // Generate unique filename: tips_{article_id}_{timestamp}.webp
+        // Generate unique filename: tips_{article_id|temp}_{timestamp}.webp
         const timestamp = Date.now();
-        const filename = `tips_${article_id}_${timestamp}.webp`;
+        const idPart = article_id ? article_id : 'temp';
+        const filename = `tips_${idPart}_${timestamp}.webp`;
         const filePath = path.join(tipsUploadDir, filename);
 
         // Process image: compress and convert to WebP (no resize, no watermark)
@@ -384,15 +380,16 @@ router.post('/tips-image', upload.single('image'), handleUploadError, async (req
 
         await fs.writeFile(filePath, processedImage);
 
-        // Update the tips table with new featured_image
-        try {
-            await pool.query(
-                'UPDATE tips SET featured_image = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-                [`/images/tips/${filename}`, parseInt(article_id)]
-            );
-        } catch (dbError) {
-            console.error('Database update error:', dbError);
-            // Continue even if DB update fails - image is already uploaded
+        // Update the tips table ONLY IF article_id is provided
+        if (article_id) {
+            try {
+                await pool.query(
+                    'UPDATE tips SET featured_image = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+                    [`/images/tips/${filename}`, parseInt(article_id)]
+                );
+            } catch (dbError) {
+                console.error('Database update error:', dbError);
+            }
         }
 
         res.json({
@@ -402,7 +399,7 @@ router.post('/tips-image', upload.single('image'), handleUploadError, async (req
                 filename: filename,
                 url: `/images/tips/${filename}`,
                 full_url: `${req.protocol}://${req.get('host')}/images/tips/${filename}`,
-                article_id: parseInt(article_id)
+                article_id: article_id ? parseInt(article_id) : null
             }
         });
 
@@ -421,14 +418,7 @@ router.post('/tips-image', upload.single('image'), handleUploadError, async (req
 router.post('/tips-content-image', upload.single('image'), handleUploadError, async (req, res) => {
     try {
         const { article_id } = req.body;
-
-        // article_id is required for proper image tracking
-        if (!article_id) {
-            return res.status(400).json({
-                success: false,
-                error: 'article_id is required'
-            });
-        }
+        // article_id is optional
 
         if (!req.file) {
             return res.status(400).json({
@@ -437,13 +427,15 @@ router.post('/tips-content-image', upload.single('image'), handleUploadError, as
             });
         }
 
-        // Verify article exists
-        const articleCheck = await pool.query('SELECT id FROM tips WHERE id = $1', [parseInt(article_id)]);
-        if (articleCheck.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                error: 'Article not found'
-            });
+        // Verify article exists IF article_id is provided
+        if (article_id) {
+            const articleCheck = await pool.query('SELECT id FROM tips WHERE id = $1', [parseInt(article_id)]);
+            if (articleCheck.rows.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Article not found'
+                });
+            }
         }
 
         // Ensure tips upload directory exists
@@ -454,9 +446,10 @@ router.post('/tips-content-image', upload.single('image'), handleUploadError, as
             await fs.mkdir(tipsUploadDir, { recursive: true });
         }
 
-        // Generate unique filename: tips_content_{article_id}_{timestamp}.webp
+        // Generate unique filename: tips_content_{article_id|temp}_{timestamp}.webp
         const timestamp = Date.now();
-        const filename = `tips_content_${article_id}_${timestamp}.webp`;
+        const idPart = article_id ? article_id : 'temp';
+        const filename = `tips_content_${idPart}_${timestamp}.webp`;
         const filePath = path.join(tipsUploadDir, filename);
 
         // Process image: compress and convert to WebP (no resize, no watermark)
@@ -473,7 +466,7 @@ router.post('/tips-content-image', upload.single('image'), handleUploadError, as
                 filename: filename,
                 url: `/images/tips/${filename}`,
                 full_url: `${req.protocol}://${req.get('host')}/images/tips/${filename}`,
-                article_id: parseInt(article_id)
+                article_id: article_id ? parseInt(article_id) : null
             }
         });
 
