@@ -8,6 +8,8 @@ const {
     optionalAuth,
     authorize,
     canModifyProperty,
+    canDeleteProperty,
+    getPropertyPermissions,
     removeSecretFields
 } = require('../middleware/auth');
 const { generateTitles } = require('../services/titleGenerator');
@@ -117,6 +119,9 @@ router.get('/', optionalAuth, async (req, res) => {
             clear_height,      // Clear height exact match (frontend)
             // Other filters
             floor_load,        // Floor loading
+            // Sorting options
+            sort = 'created_at', // 'created_at' (default), 'price', 'id'
+            order = 'desc',      // 'asc' or 'desc' (default)
             page = 1,
             limit
         } = req.query;
@@ -206,10 +211,10 @@ router.get('/', optionalAuth, async (req, res) => {
         // 4. Province filter (supports multiselect with comma-separated values)
         if (province) {
             // Convert to array (supports both comma-separated string and array)
-            const provinceArray = Array.isArray(province) 
-                ? province 
+            const provinceArray = Array.isArray(province)
+                ? province
                 : province.split(',').map(p => p.trim()).filter(p => p);
-            
+
             if (provinceArray.length === 1) {
                 // Single value - use original logic
                 const sanitizedProvince = sanitizePattern(provinceArray[0]);
@@ -238,10 +243,10 @@ router.get('/', optionalAuth, async (req, res) => {
         // 5. District filter (supports multiselect with comma-separated values)
         if (district) {
             // Convert to array (supports both comma-separated string and array)
-            const districtArray = Array.isArray(district) 
-                ? district 
+            const districtArray = Array.isArray(district)
+                ? district
                 : district.split(',').map(d => d.trim()).filter(d => d);
-            
+
             if (districtArray.length === 1) {
                 // Single value - use original logic
                 const sanitizedDistrict = sanitizePattern(districtArray[0]);
@@ -270,10 +275,10 @@ router.get('/', optionalAuth, async (req, res) => {
         // 6. Sub-district filter (supports multiselect with comma-separated values)
         if (sub_district) {
             // Convert to array (supports both comma-separated string and array)
-            const subDistrictArray = Array.isArray(sub_district) 
-                ? sub_district 
+            const subDistrictArray = Array.isArray(sub_district)
+                ? sub_district
                 : sub_district.split(',').map(s => s.trim()).filter(s => s);
-            
+
             if (subDistrictArray.length === 1) {
                 // Single value - use original logic
                 const sanitizedSubDistrict = sanitizePattern(subDistrictArray[0]);
@@ -422,13 +427,28 @@ router.get('/', optionalAuth, async (req, res) => {
             }
         }
 
+
+        // Validate and sanitize sort parameters
+        const allowedSortFields = ['created_at', 'price', 'id'];
+        const validatedSort = allowedSortFields.includes(sort) ? sort : 'created_at';
+        const validatedOrder = (order && order.toLowerCase() === 'asc') ? 'ASC' : 'DESC';
+
+        // Build ORDER BY clause
+        let orderByClause;
+        if (validatedSort === 'price') {
+            // Use priceField (already determined based on status earlier)
+            orderByClause = `ORDER BY ${priceField} ${validatedOrder}`;
+        } else {
+            orderByClause = `ORDER BY ${validatedSort} ${validatedOrder}`;
+        }
+
         // Add ordering and pagination
         if (validatedLimit === null) {
             // No limit - return all results
-            query += ` ORDER BY id DESC`;
+            query += ` ${orderByClause}`;
         } else {
             // With limit - add pagination
-            query += ` ORDER BY id DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+            query += ` ${orderByClause} LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
             params.push(validatedLimit, (validatedPage - 1) * validatedLimit);
         }
 
@@ -471,6 +491,10 @@ router.get('/', optionalAuth, async (req, res) => {
                 floor_load,
                 labels: effectiveLabelsParam,
                 zone_type: effectiveLabelsParam
+            },
+            sorting: {
+                sort: validatedSort,
+                order: validatedOrder
             }
         });
     } catch (error) {
@@ -944,6 +968,14 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
 
         // Check permissions using canModifyProperty
         if (!canModifyProperty(req.user, property)) {
+            // Provide helpful error message
+            if (req.user.role === 'agent' && property.approve_status === 'published') {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Published properties cannot be edited directly. Please use the Edit Request feature.',
+                    requiresRequest: true
+                });
+            }
             return res.status(403).json({
                 success: false,
                 error: 'You do not have permission to modify this property'
@@ -1210,8 +1242,8 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
 });
 
 // DELETE /api/properties/:id
-// Requires authentication - Admin only
-router.delete('/:id', authenticate, authorize(['admin']), async (req, res) => {
+// Requires authentication - Admin or Agent (Agent can only delete unpublished)
+router.delete('/:id', authenticate, authorize(['admin', 'agent']), async (req, res) => {
     try {
         const id = req.params.id;
 
@@ -1233,8 +1265,16 @@ router.delete('/:id', authenticate, authorize(['admin']), async (req, res) => {
 
         const property = propertyResult.rows[0];
 
-        // Check permissions using canModifyProperty
-        if (!canModifyProperty(req.user, property)) {
+        // Check permissions using canDeleteProperty
+        if (!canDeleteProperty(req.user, property)) {
+            // Provide helpful error message for agents
+            if (req.user.role === 'agent' && property.approve_status === 'published') {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Published properties cannot be deleted directly. Please use the Delete Request feature.',
+                    requiresRequest: true
+                });
+            }
             return res.status(403).json({
                 success: false,
                 error: 'You do not have permission to delete this property'

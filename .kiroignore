@@ -1,0 +1,27 @@
+# ไม่ต้อง index รูปภาพ (1.9GB)
+public/
+exports/
+Frontend_TEST/
+
+# ไม่ต้อง index dependencies และ cache
+node_modules/
+.git/
+.vscode/
+
+# ไม่ต้อง index ไฟล์ขนาดใหญ่
+*.sql
+*.csv
+*.mp4
+*.zip
+*.tar.gz
+*.log
+package-lock.json
+
+# ไม่ต้อง index documentation ที่ยาว
+docs/
+*.md
+!README.md
+
+# ไม่ต้อง index scripts ที่ไม่จำเป็น
+scripts/
+deploy/
