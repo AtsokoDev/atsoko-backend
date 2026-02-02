@@ -189,14 +189,108 @@ const canAccessProperty = (user, property) => {
 
 /**
  * Check if user can modify a property
- * Admin can modify all, Agent can only modify pending properties in their team
+ * - Admin can modify all properties
+ * - Agent can only modify their team's UNPUBLISHED properties directly
+ * - For published properties, agents must create an edit request
  */
 const canModifyProperty = (user, property) => {
     if (!user) return false;
     if (user.role === 'admin') return true;
     if (user.role === 'agent') {
-        return property.agent_team === user.team && property.approve_status === 'pending';
+        // Agent can only modify their team's unpublished properties
+        return property.agent_team === user.team && property.approve_status !== 'published';
     }
+    return false;
+};
+
+/**
+ * Check if user can delete a property directly
+ * - Admin can delete all properties
+ * - Agent can only delete their team's UNPUBLISHED properties directly
+ * - For published properties, agents must create a delete request
+ */
+const canDeleteProperty = (user, property) => {
+    if (!user) return false;
+    if (user.role === 'admin') return true;
+    if (user.role === 'agent') {
+        // Agent can only delete their team's unpublished properties
+        return property.agent_team === user.team && property.approve_status !== 'published';
+    }
+    return false;
+};
+
+/**
+ * Check what actions a user can perform on a property
+ * Returns an object with boolean flags for each action
+ */
+const getPropertyPermissions = (user, property) => {
+    if (!user) {
+        return {
+            canView: property.approve_status === 'published',
+            canEdit: false,
+            canDelete: false,
+            canRequestEdit: false,
+            canRequestDelete: false,
+            canPublish: false,
+            canUnpublish: false,
+            canChangeWorkflow: false
+        };
+    }
+
+    if (user.role === 'admin') {
+        return {
+            canView: true,
+            canEdit: true,
+            canDelete: true,
+            canRequestEdit: false, // Admin doesn't need to request
+            canRequestDelete: false, // Admin doesn't need to request
+            canPublish: property.approve_status !== 'published',
+            canUnpublish: property.approve_status === 'published',
+            canChangeWorkflow: true
+        };
+    }
+
+    if (user.role === 'agent') {
+        const isOwnTeam = property.agent_team === user.team;
+        const isPublished = property.approve_status === 'published';
+
+        return {
+            canView: isOwnTeam,
+            canEdit: isOwnTeam && !isPublished,
+            canDelete: isOwnTeam && !isPublished,
+            canRequestEdit: isOwnTeam && isPublished,
+            canRequestDelete: isOwnTeam && isPublished,
+            canPublish: false, // Agent can never publish
+            canUnpublish: false, // Agent can never unpublish
+            canChangeWorkflow: false // Agent cannot change workflow
+        };
+    }
+
+    return {
+        canView: false,
+        canEdit: false,
+        canDelete: false,
+        canRequestEdit: false,
+        canRequestDelete: false,
+        canPublish: false,
+        canUnpublish: false,
+        canChangeWorkflow: false
+    };
+};
+
+/**
+ * Workflow status transitions validation
+ * Returns true if the transition is valid
+ */
+const isValidWorkflowTransition = (currentStatus, newStatus, userRole) => {
+    // Admin can do any transition
+    if (userRole === 'admin') return true;
+
+    // Agent can only respond to fix requests (wait_to_fix -> fixed)
+    if (userRole === 'agent') {
+        return currentStatus === 'wait_to_fix' && newStatus === 'fixed';
+    }
+
     return false;
 };
 
@@ -206,6 +300,9 @@ module.exports = {
     authorize,
     canAccessProperty,
     canModifyProperty,
+    canDeleteProperty,
+    getPropertyPermissions,
+    isValidWorkflowTransition,
     removeSecretFields,
     SECRET_FIELDS,
     JWT_SECRET,
