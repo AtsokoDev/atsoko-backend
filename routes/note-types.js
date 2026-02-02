@@ -15,13 +15,12 @@ const { authenticate, authorize } = require('../middleware/auth');
 router.get('/', async (req, res) => {
     try {
         let query = `
-            SELECT id, code, name_th, name_en, description, color, icon, 
+            SELECT id, code, name, description, color, icon, 
                    allowed_roles, is_active, sort_order
             FROM note_types
         `;
 
         // If not admin, only show active ones
-        // Check if user is authenticated and is admin
         const isAdmin = req.user && req.user.role === 'admin';
 
         if (!isAdmin) {
@@ -78,14 +77,19 @@ router.get('/:code', async (req, res) => {
  */
 router.post('/', authenticate, authorize(['admin']), async (req, res) => {
     try {
-        const { code, name_th, name_en, description, color, icon, allowed_roles, sort_order } = req.body;
+        let { code, name, description, color, icon, allowed_roles, sort_order } = req.body;
 
-        // Validate required fields
-        if (!code || !name_th) {
+        // Validate required fields - only name is required
+        if (!name) {
             return res.status(400).json({
                 success: false,
-                error: 'code and name_th are required'
+                error: 'name is required'
             });
+        }
+
+        // Auto-generate code from name if not provided
+        if (!code) {
+            code = name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z_]/g, '');
         }
 
         // Validate code format (lowercase, no spaces)
@@ -110,10 +114,10 @@ router.post('/', authenticate, authorize(['admin']), async (req, res) => {
         const roles = allowed_roles || ['admin', 'agent'];
 
         const result = await pool.query(
-            `INSERT INTO note_types (code, name_th, name_en, description, color, icon, allowed_roles, sort_order)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            `INSERT INTO note_types (code, name, description, color, icon, allowed_roles, sort_order)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
              RETURNING *`,
-            [code, name_th, name_en || null, description || null, color || null, icon || null, roles, sort_order || 0]
+            [code, name, description || null, color || null, icon || null, roles, sort_order || 0]
         );
 
         res.status(201).json({
@@ -134,7 +138,7 @@ router.post('/', authenticate, authorize(['admin']), async (req, res) => {
 router.put('/:code', authenticate, authorize(['admin']), async (req, res) => {
     try {
         const { code } = req.params;
-        const { name_th, name_en, description, color, icon, allowed_roles, is_active, sort_order, new_code } = req.body;
+        const { name, description, color, icon, allowed_roles, is_active, sort_order, new_code } = req.body;
 
         // Check if exists
         const existing = await pool.query('SELECT * FROM note_types WHERE code = $1', [code]);
@@ -174,13 +178,9 @@ router.put('/:code', authenticate, authorize(['admin']), async (req, res) => {
             updates.push(`code = $${paramCount++}`);
             values.push(new_code);
         }
-        if (name_th !== undefined) {
-            updates.push(`name_th = $${paramCount++}`);
-            values.push(name_th);
-        }
-        if (name_en !== undefined) {
-            updates.push(`name_en = $${paramCount++}`);
-            values.push(name_en);
+        if (name !== undefined) {
+            updates.push(`name = $${paramCount++}`);
+            values.push(name);
         }
         if (description !== undefined) {
             updates.push(`description = $${paramCount++}`);
@@ -243,12 +243,11 @@ router.put('/:code', authenticate, authorize(['admin']), async (req, res) => {
 /**
  * DELETE /api/note-types/:code
  * Soft delete a note type (Admin only)
- * Will just set is_active = false
  */
 router.delete('/:code', authenticate, authorize(['admin']), async (req, res) => {
     try {
         const { code } = req.params;
-        const { hard = false } = req.query;
+        const { soft = false } = req.query;
 
         // Check if exists
         const existing = await pool.query('SELECT * FROM note_types WHERE code = $1', [code]);
@@ -265,23 +264,8 @@ router.delete('/:code', authenticate, authorize(['admin']), async (req, res) => 
             [code]
         );
 
-        if (hard === 'true') {
-            // Hard delete - only if not used
-            if (parseInt(usageCount.rows[0].count) > 0) {
-                return res.status(400).json({
-                    success: false,
-                    error: `Cannot hard delete. ${usageCount.rows[0].count} notes are using this type. Use soft delete instead.`
-                });
-            }
-
-            await pool.query('DELETE FROM note_types WHERE code = $1', [code]);
-
-            res.json({
-                success: true,
-                message: 'Note type deleted permanently'
-            });
-        } else {
-            // Soft delete
+        if (soft === 'true') {
+            // Soft delete - just deactivate
             await pool.query(
                 'UPDATE note_types SET is_active = false, updated_at = NOW() WHERE code = $1',
                 [code]
@@ -292,6 +276,28 @@ router.delete('/:code', authenticate, authorize(['admin']), async (req, res) => 
                 message: 'Note type deactivated successfully',
                 notes_affected: parseInt(usageCount.rows[0].count)
             });
+        } else {
+            // Hard delete - actually remove from database
+            if (parseInt(usageCount.rows[0].count) > 0) {
+                // If notes are using this type, just deactivate instead
+                await pool.query(
+                    'UPDATE note_types SET is_active = false, updated_at = NOW() WHERE code = $1',
+                    [code]
+                );
+
+                res.json({
+                    success: true,
+                    message: `Note type deactivated (${usageCount.rows[0].count} notes are using this type)`,
+                    notes_affected: parseInt(usageCount.rows[0].count)
+                });
+            } else {
+                await pool.query('DELETE FROM note_types WHERE code = $1', [code]);
+
+                res.json({
+                    success: true,
+                    message: 'Note type deleted permanently'
+                });
+            }
         }
     } catch (error) {
         console.error('[DELETE /note-types/:code] Error:', error);
