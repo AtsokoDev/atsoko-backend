@@ -207,6 +207,15 @@ router.put('/:id/publish', authenticate, authorize(['admin']), async (req, res) 
 
         const property = propertyResult.rows[0];
 
+        // Check if already published
+        if (property.approve_status === 'published') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+                success: false,
+                error: 'Property is already published'
+            });
+        }
+
         // Check if ready to publish
         if (property.workflow_status !== 'ready_to_publish') {
             await client.query('ROLLBACK');
