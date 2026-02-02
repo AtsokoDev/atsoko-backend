@@ -118,20 +118,29 @@ router.post('/:propertyId', authenticate, authorize(['admin', 'agent']), async (
         // Agent cannot create internal notes
         const actualIsInternal = req.user.role === 'admin' ? is_internal : false;
 
-        // Validate note_type
-        const validNoteTypes = ['general', 'fix_request', 'fix_response', 'approval', 'rejection'];
-        if (!validNoteTypes.includes(note_type)) {
+        // Validate note_type from database
+        const noteTypeResult = await pool.query(
+            'SELECT * FROM note_types WHERE code = $1 AND is_active = true',
+            [note_type]
+        );
+
+        if (noteTypeResult.rows.length === 0) {
+            // Get valid types for error message
+            const validTypes = await pool.query('SELECT code FROM note_types WHERE is_active = true');
+            const validCodes = validTypes.rows.map(r => r.code).join(', ');
             return res.status(400).json({
                 success: false,
-                error: 'Invalid note_type. Must be one of: ' + validNoteTypes.join(', ')
+                error: `Invalid note_type. Must be one of: ${validCodes}`
             });
         }
 
-        // Agent can only create general or fix_response notes
-        if (req.user.role === 'agent' && !['general', 'fix_response'].includes(note_type)) {
-            return res.status(400).json({
+        const noteTypeConfig = noteTypeResult.rows[0];
+
+        // Check if user's role is allowed to use this note_type
+        if (!noteTypeConfig.allowed_roles.includes(req.user.role)) {
+            return res.status(403).json({
                 success: false,
-                error: 'Agents can only create general or fix_response notes'
+                error: `Your role (${req.user.role}) cannot create notes of type '${note_type}'`
             });
         }
 
