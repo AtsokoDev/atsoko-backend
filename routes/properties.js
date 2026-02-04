@@ -119,9 +119,9 @@ router.get('/', optionalAuth, async (req, res) => {
             clear_height,      // Clear height exact match (frontend)
             // Other filters
             floor_load,        // Floor loading
-            // Sorting options
-            sort = 'created_at', // 'created_at' (default), 'price', 'id'
-            order = 'desc',      // 'asc' or 'desc' (default)
+            // Sorting options (no defaults - handled in sorting logic below)
+            sort,              // Sort field or combined format (e.g., 'updated_desc', 'price_asc')
+            order,             // Sort order ('asc' or 'desc') - for legacy format only
             page = 1,
             limit
         } = req.query;
@@ -428,10 +428,57 @@ router.get('/', optionalAuth, async (req, res) => {
         }
 
 
-        // Validate and sanitize sort parameters
-        const allowedSortFields = ['created_at', 'price', 'id'];
-        const validatedSort = allowedSortFields.includes(sort) ? sort : 'created_at';
-        const validatedOrder = (order && order.toLowerCase() === 'asc') ? 'ASC' : 'DESC';
+
+        // ========================================================================
+        // SORTING LOGIC
+        // Supports two formats:
+        // 1. Legacy: ?sort=created_at&order=desc
+        // 2. Combined: ?sort=created_desc (field_order format from frontend)
+        // ========================================================================
+
+        // Parse sort parameter - check if it contains underscore (combined format)
+        let sortField = 'updated_at'; // Default: Last Modified
+        let sortOrder = 'DESC';       // Default: Newest first
+
+        if (sort) {
+            // Check if sort is in combined format (e.g., "updated_desc", "price_asc")
+            if (sort.includes('_')) {
+                const parts = sort.split('_');
+                const lastPart = parts[parts.length - 1];
+
+                // Check if last part is asc or desc
+                if (lastPart === 'asc' || lastPart === 'desc') {
+                    sortOrder = lastPart.toUpperCase();
+                    sortField = parts.slice(0, -1).join('_'); // Everything except last part
+                } else {
+                    // Not a valid combined format, treat as legacy field name
+                    sortField = sort;
+                }
+            } else {
+                // Legacy format: just field name
+                sortField = sort;
+            }
+        }
+
+        // Override with explicit order parameter if provided (legacy support)
+        if (order) {
+            sortOrder = (order.toLowerCase() === 'asc') ? 'ASC' : 'DESC';
+        }
+
+        // Map frontend field names to database column names
+        // Frontend sends: created, updated | Database has: created_at, updated_at
+        const fieldMapping = {
+            'created': 'created_at',
+            'updated': 'updated_at'
+        };
+        if (fieldMapping[sortField]) {
+            sortField = fieldMapping[sortField];
+        }
+
+        // Validate sort field
+        const allowedSortFields = ['created_at', 'updated_at', 'price', 'size', 'id'];
+        const validatedSort = allowedSortFields.includes(sortField) ? sortField : 'updated_at';
+        const validatedOrder = sortOrder; // Already validated above
 
         // Build ORDER BY clause
         let orderByClause;
@@ -1151,13 +1198,35 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
 
         const result = await pool.query(query, params);
 
-        // Check if we need to regenerate titles (if relevant fields changed)
+        // ========================================================================
+        // AUTO-REGENERATE TITLES when relevant fields change
+        // This ensures title always matches the actual property data
+        // ========================================================================
         const titleRelevantFields = ['type_id', 'status_id', 'subdistrict_id', 'size', 'type', 'status', 'province', 'district', 'sub_district'];
         const needsTitleRegeneration = fieldsToUpdate.some(f => titleRelevantFields.includes(f));
+
+        console.log('[UPDATE PROPERTY] Title Regeneration Check:');
+        console.log('  - Fields updated:', fieldsToUpdate);
+        console.log('  - Title-relevant fields:', titleRelevantFields);
+        console.log('  - Needs regeneration?', needsTitleRegeneration);
 
         if (needsTitleRegeneration) {
             try {
                 const updatedProperty = result.rows[0];
+
+                console.log('[UPDATE PROPERTY] Regenerating titles with data:', {
+                    type_id: updatedProperty.type_id,
+                    status_id: updatedProperty.status_id,
+                    subdistrict_id: updatedProperty.subdistrict_id,
+                    size: updatedProperty.size,
+                    property_id: updatedProperty.property_id,
+                    type: updatedProperty.type,
+                    status: updatedProperty.status,
+                    province: updatedProperty.province,
+                    district: updatedProperty.district,
+                    sub_district: updatedProperty.sub_district
+                });
+
                 const generatedTitles = await generateTitles({
                     type_id: updatedProperty.type_id,
                     status_id: updatedProperty.status_id,
@@ -1172,20 +1241,29 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
                     sub_district: updatedProperty.sub_district
                 });
 
-                // Update with regenerated titles
+                console.log('[UPDATE PROPERTY] Generated titles:', generatedTitles);
+
+                // Update ALL title fields (including legacy 'title' field)
+                // This ensures backward compatibility with old code that uses 'title'
                 await pool.query(
-                    'UPDATE properties SET title_en = $1, title_th = $2, title_zh = $3 WHERE id = $4',
-                    [generatedTitles.title_en, generatedTitles.title_th, generatedTitles.title_zh, updatedProperty.id]
+                    'UPDATE properties SET title = $1, title_en = $2, title_th = $3, title_zh = $4 WHERE id = $5',
+                    [generatedTitles.title_en, generatedTitles.title_en, generatedTitles.title_th, generatedTitles.title_zh, updatedProperty.id]
                 );
 
+                console.log('[UPDATE PROPERTY] ✅ Titles updated successfully');
+
                 // Merge regenerated titles into result
+                result.rows[0].title = generatedTitles.title_en; // Update legacy field
                 result.rows[0].title_en = generatedTitles.title_en;
                 result.rows[0].title_th = generatedTitles.title_th;
                 result.rows[0].title_zh = generatedTitles.title_zh;
             } catch (titleError) {
-                console.warn('Title regeneration failed:', titleError.message);
+                console.error('[UPDATE PROPERTY] ❌ Title regeneration failed:', titleError.message);
+                console.error(titleError);
                 // Continue without regenerating titles
             }
+        } else {
+            console.log('[UPDATE PROPERTY] ℹ️  No title regeneration needed');
         }
 
         // If images were updated, delete removed image files from disk
