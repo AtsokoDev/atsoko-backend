@@ -10,12 +10,12 @@
 
 | Method | Endpoint | Auth | คำอธิบาย |
 |--------|----------|------|----------|
-| GET | `/api/note-types` | ไม่จำเป็น | ดูรายการ note types ทั้งหมด |
+| GET | `/api/note-types` | ไม่จำเป็น | ดูรายการ note types ทั้งหมด (supports `?exclude_system=true`) |
 | GET | `/api/note-types/:code` | ไม่จำเป็น | ดู note type ตาม code |
 | POST | `/api/note-types` | Admin | เพิ่ม note type ใหม่ |
-| PUT | `/api/note-types/:code` | Admin | แก้ไข note type |
-| DELETE | `/api/note-types/:code` | Admin | ลบ note type (soft delete) |
-| PUT | `/api/note-types/:code/restore` | Admin | restore note type ที่ลบแล้ว |
+| PUT | `/api/note-types/:id` | Admin | แก้ไข note type |
+| DELETE | `/api/note-types/:id` | Admin | ลบ note type (soft delete) |
+| PUT | `/api/note-types/:id/restore` | Admin | restore note type ที่ลบแล้ว |
 
 ---
 
@@ -37,10 +37,15 @@
       "icon": null,
       "allowed_roles": ["admin", "agent"],
       "is_active": true,
-      "sort_order": 1
+      "sort_order": 1,
+      "is_system": false
     }
   ]
 }
+```
+
+### GET /api/note-types?exclude_system=true
+Returns only non-system note types (for user selection).
 ```
 
 ---
@@ -143,6 +148,9 @@ function NoteTypesManagement() {
 ### ดู Note Types ทั้งหมด
 ```bash
 curl http://localhost:3000/api/note-types
+
+# Get only non-system types
+curl "http://localhost:3000/api/note-types?exclude_system=true"
 ```
 
 ### เพิ่ม Note Type ใหม่ (Admin)
@@ -163,26 +171,25 @@ curl -X POST http://localhost:3000/api/note-types \
 
 ### แก้ไขชื่อ Note Type (Admin)
 ```bash
-# เปลี่ยนชื่อ rejection → not_approved
-curl -X PUT http://localhost:3000/api/note-types/rejection \
+# Update by ID
+curl -X PUT http://localhost:3000/api/note-types/5 \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "name_th": "ไม่อนุมัติ",
-    "name_en": "Not Approved",
-    "new_code": "not_approved"
+    "name": "Updated Name"
   }'
 ```
 
 ### ลบ Note Type (Soft Delete)
 ```bash
-curl -X DELETE http://localhost:3000/api/note-types/rejection \
+# Delete by ID
+curl -X DELETE http://localhost:3000/api/note-types/5 \
   -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
 ### Restore Note Type
 ```bash
-curl -X PUT http://localhost:3000/api/note-types/rejection/restore \
+curl -X PUT http://localhost:3000/api/note-types/5/restore \
   -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
@@ -254,4 +261,7 @@ curl -X PUT http://localhost:3000/api/note-types/rejection/restore \
 
 3. **เปลี่ยน code ได้** - ใช้ `new_code` ใน PUT request (notes เก่าจะถูก update ให้อัตโนมัติ)
 
-4. **Frontend ควร cache** - เก็บ note types ไว้ใน state/store ไม่ต้อง fetch ทุกครั้ง
+5. **System Types** - Note types ที่มี `is_system: true` (เช่น `fix_request`, `fix_response`, `edit_request`, `delete_request`) จะ:
+    - ไม่สามารถลบได้ (ทั้ง Soft/Hard delete)
+    - ไม่สามารถแก้ไข `code` ได้
+    - ถูกซ่อนเมื่อใช้ parameter `?exclude_system=true`
