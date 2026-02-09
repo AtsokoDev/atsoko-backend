@@ -180,7 +180,7 @@ router.post('/image', upload.single('image'), handleUploadError, async (req, res
 // TODO: Add authentication middleware to protect this route
 router.post('/images', upload.array('images', 20), handleUploadError, async (req, res) => {
     try {
-        const { property_id } = req.body;
+        const { property_id, existing_images } = req.body;
 
         if (!property_id) {
             return res.status(400).json({
@@ -212,7 +212,21 @@ router.post('/images', upload.array('images', 20), handleUploadError, async (req
         const property = result.rows[0];
         const actualPropertyId = property.property_id; // e.g. AT2059R
         const statusCode = getStatusCode(property.status);
-        const currentImages = property.images || [];
+
+        // Use existing_images from request if provided, otherwise use current images from database
+        // This allows frontend to control which images to keep (e.g., after deleting some)
+        let baseImages = [];
+        if (existing_images) {
+            // existing_images can be array or comma-separated string
+            baseImages = Array.isArray(existing_images)
+                ? existing_images
+                : (typeof existing_images === 'string' ? existing_images.split(',').filter(img => img.trim()) : []);
+            console.log('[UPLOAD IMAGES] Using existing_images from request:', baseImages);
+        } else {
+            // Fallback to database images
+            baseImages = property.images || [];
+            console.log('[UPLOAD IMAGES] Using images from database:', baseImages);
+        }
 
         // Ensure upload directory exists
         const uploadDir = await ensureUploadDir();
@@ -252,8 +266,8 @@ router.post('/images', upload.array('images', 20), handleUploadError, async (req
             nextNumber++;
         }
 
-        // Update database: merge new filenames with existing ones
-        const allImages = [...currentImages];
+        // Merge: baseImages (from request or database) + newFilenames
+        const allImages = [...baseImages];
         newFilenames.forEach(filename => {
             if (!allImages.includes(filename)) {
                 allImages.push(filename);
@@ -271,7 +285,8 @@ router.post('/images', upload.array('images', 20), handleUploadError, async (req
             data: {
                 property_id: property_id,
                 status_code: statusCode,
-                images: uploadedFiles,
+                images: allImages,  // Return final images array for frontend
+                uploaded: uploadedFiles,
                 total_images: allImages.length
             }
         });
