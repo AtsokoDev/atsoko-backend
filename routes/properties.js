@@ -720,7 +720,10 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
             "title_zh",
             // Category and Tags
             "category",
-            "tags"
+            "tags",
+            // Workflow fields
+            "workflow_status",
+            "approve_status"
         ];
 
         // Filter only allowed fields from request
@@ -730,18 +733,27 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
             return res.status(400).json({ success: false, error: 'No valid fields provided' });
         }
 
-        // For agents: force agent_team to their team and approve_status to pending
+        // For agents: force agent_team to their team, approve_status to pending, and workflow_status to pending
         if (req.user.role === 'agent') {
             data.agent_team = req.user.team;
             data.approve_status = 'pending';
+            data.workflow_status = 'pending';
             // Ensure these fields are included
             if (!fieldsToInsert.includes('agent_team')) fieldsToInsert.push('agent_team');
             if (!fieldsToInsert.includes('approve_status')) fieldsToInsert.push('approve_status');
+            if (!fieldsToInsert.includes('workflow_status')) fieldsToInsert.push('workflow_status');
         } else if (req.user.role === 'admin') {
             // Admin can set any status, default to published if not specified
             if (!data.approve_status) {
                 data.approve_status = 'published';
                 if (!fieldsToInsert.includes('approve_status')) fieldsToInsert.push('approve_status');
+            }
+            // Admin default workflow_status
+            if (!data.workflow_status) {
+                // If approve_status is 'published', set workflow_status to 'ready_to_publish'
+                // Otherwise, set to 'pending'
+                data.workflow_status = data.approve_status === 'published' ? 'ready_to_publish' : 'pending';
+                if (!fieldsToInsert.includes('workflow_status')) fieldsToInsert.push('workflow_status');
             }
         }
 
