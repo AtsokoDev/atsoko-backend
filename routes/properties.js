@@ -142,16 +142,25 @@ router.get('/remarks-suggestions', authenticate, async (req, res) => {
         const sanitizedQuery = sanitizePattern(q);
 
         // Build query with same filters as main endpoint
+        // Use both ILIKE (substring match) and regex (word-start match) for better results
         let query = `
             SELECT DISTINCT remarks 
             FROM properties 
             WHERE remarks IS NOT NULL 
               AND remarks != '' 
-              AND remarks ILIKE $1
+              AND (
+                  remarks ILIKE $1 
+                  OR remarks ~* $2
+              )
         `;
 
-        const params = [`%${sanitizedQuery}%`];
-        let paramCount = 2;
+        // $1 = '%query%' for substring match
+        // $2 = '(^|\\s)query' for word-start match (beginning of string or after whitespace)
+        const params = [
+            `%${sanitizedQuery}%`,
+            `(^|\\s)${sanitizedQuery}`
+        ];
+        let paramCount = 3;
 
         // Apply same filters as main endpoint
         // Admin can see all properties (no role-based filter needed)
