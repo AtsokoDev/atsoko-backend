@@ -85,12 +85,67 @@ const findNextAvailablePropertyNumber = async (client) => {
     return result.rows[0].next_number;
 };
 
+// GET /api/properties/remarks-suggestions
+// Autocomplete endpoint for remarks field (Admin only)
+router.get('/remarks-suggestions', authenticate, async (req, res) => {
+    try {
+        const { q } = req.query; // q = query string ที่ user พิมพ์
+
+        // เช็คว่าเป็น admin เท่านั้น
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({
+                success: false,
+                error: 'Only admins can search remarks'
+            });
+        }
+
+        // ถ้าไม่มีคำค้นหา หรือสั้นเกินไป
+        if (!q || q.trim().length < 2) {
+            return res.json({
+                success: true,
+                data: []
+            });
+        }
+
+        const sanitizedQuery = sanitizePattern(q);
+
+        // Query เพื่อหา remarks ที่ตรงกับคำค้นหา
+        const query = `
+            SELECT DISTINCT remarks 
+            FROM properties 
+            WHERE remarks IS NOT NULL 
+              AND remarks != '' 
+              AND remarks ILIKE $1
+            ORDER BY remarks
+            LIMIT 10
+        `;
+
+        const result = await pool.query(query, [`%${sanitizedQuery}%`]);
+
+        // ส่งกลับเฉพาะ remarks ที่ไม่ซ้ำกัน
+        const suggestions = result.rows.map(row => row.remarks);
+
+        res.json({
+            success: true,
+            data: suggestions
+        });
+
+    } catch (error) {
+        console.error('Error fetching remarks suggestions:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch suggestions'
+        });
+    }
+});
+
 // GET all properties with filters
 // Uses optionalAuth - guests can access but won't see secret fields
 router.get('/', optionalAuth, async (req, res) => {
     try {
         const {
             keyword,           // Search by title
+            remarks,           // Search by remarks (Admin only)
             property_id,       // Search by property_id (partial match)
             status,            // Rent or Sale
             type,              // Warehouse or Factory
@@ -184,6 +239,24 @@ router.get('/', optionalAuth, async (req, res) => {
             countQuery += ` AND property_id ILIKE $${paramCount}`;
             params.push(`%${sanitizedPropertyId}%`);
             countParams.push(`%${sanitizedPropertyId}%`);
+            paramCount++;
+        }
+
+        // 1c. Remarks-only search (Admin only)
+        if (remarks) {
+            // เช็คว่าเป็น admin เท่านั้น
+            if (!req.user || req.user.role !== 'admin') {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Only admins can search remarks'
+                });
+            }
+
+            const sanitizedRemarks = sanitizePattern(remarks);
+            query += ` AND remarks ILIKE $${paramCount}`;
+            countQuery += ` AND remarks ILIKE $${paramCount}`;
+            params.push(`%${sanitizedRemarks}%`);
+            countParams.push(`%${sanitizedRemarks}%`);
             paramCount++;
         }
 
@@ -524,6 +597,7 @@ router.get('/', optionalAuth, async (req, res) => {
             },
             filters: {
                 keyword,
+                remarks,
                 property_id,
                 status,
                 type,
