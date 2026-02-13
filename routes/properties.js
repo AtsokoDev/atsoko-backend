@@ -167,11 +167,11 @@ router.get('/', optionalAuth, async (req, res) => {
         }
         // Admin: can see all properties (no filter needed)
 
-        // 1. Keyword search in title
+        // 1. Keyword search in title, property_id, and remarks
         if (keyword) {
             const sanitizedKeyword = sanitizePattern(keyword);
-            query += ` AND title ILIKE $${paramCount}`;
-            countQuery += ` AND title ILIKE $${paramCount}`;
+            query += ` AND (title ILIKE $${paramCount} OR property_id ILIKE $${paramCount} OR remarks ILIKE $${paramCount})`;
+            countQuery += ` AND (title ILIKE $${paramCount} OR property_id ILIKE $${paramCount} OR remarks ILIKE $${paramCount})`;
             params.push(`%${sanitizedKeyword}%`);
             countParams.push(`%${sanitizedKeyword}%`);
             paramCount++;
