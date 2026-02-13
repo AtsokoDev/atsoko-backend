@@ -87,9 +87,34 @@ const findNextAvailablePropertyNumber = async (client) => {
 
 // GET /api/properties/remarks-suggestions
 // Autocomplete endpoint for remarks field (Admin only)
+// Supports all filters from main endpoint to show only relevant suggestions
 router.get('/remarks-suggestions', authenticate, async (req, res) => {
     try {
-        const { q } = req.query; // q = query string ที่ user พิมพ์
+        const {
+            q,                 // Query string for remarks
+            // All filters from main endpoint
+            status,
+            type,
+            province,
+            district,
+            sub_district,
+            min_size,
+            max_size,
+            size_min,
+            size_max,
+            min_price,
+            max_price,
+            price_min,
+            price_max,
+            features,
+            feature,
+            labels,
+            zone_type,
+            min_height,
+            max_height,
+            clear_height,
+            floor_load
+        } = req.query;
 
         // เช็คว่าเป็น admin เท่านั้น
         if (req.user.role !== 'admin') {
@@ -107,20 +132,207 @@ router.get('/remarks-suggestions', authenticate, async (req, res) => {
             });
         }
 
+        // Use frontend naming if provided, fallback to legacy
+        const effectiveMinSize = size_min || min_size;
+        const effectiveMaxSize = size_max || max_size;
+        const effectiveMinPrice = price_min || min_price;
+        const effectiveMaxPrice = price_max || max_price;
+        const effectiveLabels = labels || zone_type;
+
         const sanitizedQuery = sanitizePattern(q);
 
-        // Query เพื่อหา remarks ที่ตรงกับคำค้นหา
-        const query = `
+        // Build query with same filters as main endpoint
+        let query = `
             SELECT DISTINCT remarks 
             FROM properties 
             WHERE remarks IS NOT NULL 
               AND remarks != '' 
               AND remarks ILIKE $1
-            ORDER BY remarks
-            LIMIT 10
         `;
 
-        const result = await pool.query(query, [`%${sanitizedQuery}%`]);
+        const params = [`%${sanitizedQuery}%`];
+        let paramCount = 2;
+
+        // Apply same filters as main endpoint
+        // Admin can see all properties (no role-based filter needed)
+
+        // Status filter
+        if (status) {
+            const sanitizedStatus = sanitizePattern(status);
+            query += ` AND status ILIKE $${paramCount}`;
+            params.push(`%${sanitizedStatus}%`);
+            paramCount++;
+        }
+
+        // Type filter
+        if (type && type.toLowerCase() !== 'warehouse') {
+            const sanitizedType = sanitizePattern(type);
+            query += ` AND type ILIKE $${paramCount}`;
+            params.push(`%${sanitizedType}%`);
+            paramCount++;
+        }
+
+        // Province filter
+        if (province) {
+            const provinceArray = Array.isArray(province)
+                ? province
+                : province.split(',').map(p => p.trim()).filter(p => p);
+
+            if (provinceArray.length === 1) {
+                const sanitizedProvince = sanitizePattern(provinceArray[0]);
+                query += ` AND province ILIKE $${paramCount}`;
+                params.push(`%${sanitizedProvince}%`);
+                paramCount++;
+            } else if (provinceArray.length > 1) {
+                const orConditions = [];
+                provinceArray.forEach(p => {
+                    const sanitizedProvince = sanitizePattern(p);
+                    orConditions.push(`province ILIKE $${paramCount}`);
+                    params.push(`%${sanitizedProvince}%`);
+                    paramCount++;
+                });
+                query += ` AND (${orConditions.join(' OR ')})`;
+            }
+        }
+
+        // District filter
+        if (district) {
+            const districtArray = Array.isArray(district)
+                ? district
+                : district.split(',').map(d => d.trim()).filter(d => d);
+
+            if (districtArray.length === 1) {
+                const sanitizedDistrict = sanitizePattern(districtArray[0]);
+                query += ` AND district ILIKE $${paramCount}`;
+                params.push(`%${sanitizedDistrict}%`);
+                paramCount++;
+            } else if (districtArray.length > 1) {
+                const orConditions = [];
+                districtArray.forEach(d => {
+                    const sanitizedDistrict = sanitizePattern(d);
+                    orConditions.push(`district ILIKE $${paramCount}`);
+                    params.push(`%${sanitizedDistrict}%`);
+                    paramCount++;
+                });
+                query += ` AND (${orConditions.join(' OR ')})`;
+            }
+        }
+
+        // Sub-district filter
+        if (sub_district) {
+            const subDistrictArray = Array.isArray(sub_district)
+                ? sub_district
+                : sub_district.split(',').map(s => s.trim()).filter(s => s);
+
+            if (subDistrictArray.length === 1) {
+                const sanitizedSubDistrict = sanitizePattern(subDistrictArray[0]);
+                query += ` AND sub_district ILIKE $${paramCount}`;
+                params.push(`%${sanitizedSubDistrict}%`);
+                paramCount++;
+            } else if (subDistrictArray.length > 1) {
+                const orConditions = [];
+                subDistrictArray.forEach(s => {
+                    const sanitizedSubDistrict = sanitizePattern(s);
+                    orConditions.push(`sub_district ILIKE $${paramCount}`);
+                    params.push(`%${sanitizedSubDistrict}%`);
+                    paramCount++;
+                });
+                query += ` AND (${orConditions.join(' OR ')})`;
+            }
+        }
+
+        // Size filters
+        if (effectiveMinSize) {
+            const validatedMinSize = validateNumber(effectiveMinSize, 'size_min');
+            query += ` AND size >= $${paramCount}`;
+            params.push(validatedMinSize);
+            paramCount++;
+        }
+
+        if (effectiveMaxSize) {
+            const validatedMaxSize = validateNumber(effectiveMaxSize, 'size_max');
+            query += ` AND size <= $${paramCount}`;
+            params.push(validatedMaxSize);
+            paramCount++;
+        }
+
+        // Price filters
+        const priceField = status && status.toLowerCase().includes('sale') ? 'price_alternative' : 'price';
+
+        if (effectiveMinPrice) {
+            const validatedMinPrice = validateNumber(effectiveMinPrice, 'price_min');
+            query += ` AND ${priceField} >= $${paramCount}`;
+            params.push(validatedMinPrice);
+            paramCount++;
+        }
+
+        if (effectiveMaxPrice) {
+            const validatedMaxPrice = validateNumber(effectiveMaxPrice, 'price_max');
+            query += ` AND ${priceField} <= $${paramCount}`;
+            params.push(validatedMaxPrice);
+            paramCount++;
+        }
+
+        // Features filter
+        if (features) {
+            const featuresArray = Array.isArray(features) ? features : features.split(',').map(f => f.trim());
+            query += ` AND (features LIKE '[%]' AND features::jsonb @> $${paramCount}::jsonb)`;
+            params.push(JSON.stringify(featuresArray));
+            paramCount++;
+        }
+
+        // Labels / Zone Type filter
+        if (effectiveLabels) {
+            const labelsArray = Array.isArray(effectiveLabels) ? effectiveLabels : effectiveLabels.split(',').map(l => l.trim());
+            query += ` AND (labels LIKE '[%]' AND labels::jsonb @> $${paramCount}::jsonb)`;
+            params.push(JSON.stringify(labelsArray));
+            paramCount++;
+        }
+
+        // Single feature filter
+        if (feature && !features) {
+            const sanitizedFeature = sanitizePattern(feature);
+            query += ` AND features ILIKE $${paramCount}`;
+            params.push(`%${sanitizedFeature}%`);
+            paramCount++;
+        }
+
+        // Height filters
+        if (min_height) {
+            const validatedMinHeight = validateNumber(min_height, 'min_height');
+            query += ` AND clear_height IS NOT NULL AND clear_height != '' AND CAST(REGEXP_REPLACE(clear_height, '[^0-9]', '', 'g') AS INTEGER) >= $${paramCount}`;
+            params.push(validatedMinHeight);
+            paramCount++;
+        }
+
+        if (max_height) {
+            const validatedMaxHeight = validateNumber(max_height, 'max_height');
+            query += ` AND clear_height IS NOT NULL AND clear_height != '' AND CAST(REGEXP_REPLACE(clear_height, '[^0-9]', '', 'g') AS INTEGER) <= $${paramCount}`;
+            params.push(validatedMaxHeight);
+            paramCount++;
+        }
+
+        if (clear_height && !min_height && !max_height) {
+            const sanitizedClearHeight = sanitizePattern(clear_height);
+            query += ` AND clear_height ILIKE $${paramCount}`;
+            params.push(`%${sanitizedClearHeight}%`);
+            paramCount++;
+        }
+
+        // Floor load filter
+        if (floor_load) {
+            const minFloorLoad = parseFloat(floor_load);
+            if (!isNaN(minFloorLoad)) {
+                query += ` AND CAST(NULLIF(REGEXP_REPLACE(floor_load, '[^0-9.]', '', 'g'), '') AS DECIMAL) >= $${paramCount}`;
+                params.push(minFloorLoad);
+                paramCount++;
+            }
+        }
+
+        // Add ordering and limit
+        query += ` ORDER BY remarks LIMIT 10`;
+
+        const result = await pool.query(query, params);
 
         // ส่งกลับเฉพาะ remarks ที่ไม่ซ้ำกัน
         const suggestions = result.rows.map(row => row.remarks);
