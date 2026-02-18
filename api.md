@@ -367,7 +367,7 @@ Authorization: Bearer <access_token>
 
 | Parameter | Type | Description | Example |
 |-----------|------|-------------|---------|
-| `keyword` | string | ค้นหาจากชื่อ (title) | `?keyword=warehouse` |
+| `keyword` | string | ค้นหาแบบ relevance จาก `property_id`, `title`, `remarks` (FTS + fuzzy + partial) | `?keyword=warehouse` |
 | `status` | string | กรองตามสถานะ | `?status=rent` หรือ `?status=sale` |
 | `type` | string | กรองตามประเภท | `?type=warehouse` หรือ `?type=factory` |
 | `province` | string | กรองตามจังหวัด | `?province=Bangkok` |
@@ -382,9 +382,11 @@ Authorization: Bearer <access_token>
 | `max_height` | number | Clear height สูงสุด (m) | `?max_height=12` |
 | `floor_load` | string | Floor loading | `?floor_load=3 tons` |
 | `page` | integer | หน้าที่ต้องการ (เริ่มที่ 1) | `?page=1` |
-| `limit` | integer | จำนวนต่อหน้า (max 100) | `?limit=20` |
+| `limit` | integer | จำนวนต่อหน้า (max 1000, `0` = no limit) | `?limit=20` |
 
 > **Note**: Smart Price Selection - ถ้า status = "sale" จะใช้ `price_alternative` แทน `price` ในการกรอง
+>
+> **Search Note**: `keyword` จะจัดอันดับผลลัพธ์ตามความเกี่ยวข้อง (exact `property_id` > `title` > `remarks`) และรองรับ typo เล็กน้อย
 
 #### Response
 
@@ -443,6 +445,76 @@ GET /api/properties?min_price=20000&max_price=50000&min_size=200&max_size=1000
 # รวม filters หลายตัว
 GET /api/properties?status=rent&type=warehouse&province=Bangkok&min_size=300
 ```
+
+---
+
+### 1.1 GET `/api/properties/suggestions` - Search Suggestions (Autocomplete)
+
+ใช้สำหรับ Search-as-you-type (dropdown ใต้ช่องค้นหา) โดยคืนเฉพาะข้อมูลเบาๆ ที่ใช้แสดงผลรายการแนะนำ
+
+> 🔓 **Public Access** - role visibility เหมือน endpoint list
+
+#### Headers (Optional - for authenticated access)
+
+```
+Authorization: Bearer <access_token>
+```
+
+#### Query Parameters
+
+| Parameter | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `q` | string | คำค้นหา (ขั้นต่ำ 2 ตัวอักษร) | `?q=warehous` |
+| `limit` | integer | จำนวนรายการแนะนำ (default 8, max 20) | `?limit=8` |
+| `status` | string | กรองตามสถานะ | `?status=rent` |
+| `type` | string | กรองตามประเภท | `?type=factory` |
+| `province` | string | กรองตามจังหวัด | `?province=Bangkok` |
+| `district` | string | กรองตามอำเภอ | `?district=Bang%20Bo` |
+| `sub_district` | string | กรองตามตำบล | `?sub_district=Bang%20Phriang` |
+
+#### Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1844,
+      "property_id": "AT57R",
+      "title": "Factory or Warehouse 220 sqm for Rent at ...",
+      "subtitle": "Khlong Song, Khlong Luang, Pathum Thani",
+      "type": "Factory",
+      "status": "For Rent",
+      "slug": "factory-or-warehouse-220-sqm-for-rent-at-...",
+      "size": "220.00",
+      "price": "30000.00",
+      "price_alternative": null
+    }
+  ],
+  "meta": {
+    "query": "warehouse",
+    "limit": 8
+  }
+}
+```
+
+#### Examples
+
+```bash
+# พิมพ์ค้นหาเพื่อแสดง suggestions
+GET /api/properties/suggestions?q=warehouse&limit=8
+
+# Typo-tolerant search
+GET /api/properties/suggestions?q=warehous&limit=8
+
+# Suggestions + filters
+GET /api/properties/suggestions?q=factory&status=rent&province=Bangkok&limit=8
+```
+
+> **Frontend Tips**
+> - เรียก API เมื่อ `q.length >= 2`
+> - debounce 200-300ms
+> - cancel request เก่าเมื่อพิมพ์ต่อ (AbortController)
 
 ---
 
