@@ -38,6 +38,12 @@ const sanitizePattern = (value) => {
     return value.replace(/[%_]/g, '\\$&');
 };
 
+// Normalize keyword for stable search behavior
+const normalizeKeyword = (value) => {
+    if (typeof value !== 'string') return '';
+    return value.trim().replace(/\s+/g, ' ');
+};
+
 /**
  * Find the next available property number.
  * This function looks for "gaps" in existing property IDs (e.g., if AT1R, AT3R exist, it returns 2)
@@ -360,6 +366,172 @@ router.get('/remarks-suggestions', authenticate, async (req, res) => {
     }
 });
 
+// GET /api/properties/suggestions
+// Public autocomplete endpoint for property search-as-you-type
+// Returns lightweight payload for dropdowns
+router.get('/suggestions', optionalAuth, async (req, res) => {
+    try {
+        const {
+            q,
+            limit = 8,
+            status,
+            type,
+            province,
+            district,
+            sub_district
+        } = req.query;
+
+        const normalizedQuery = normalizeKeyword(q || '');
+        if (normalizedQuery.length < 2) {
+            return res.json({
+                success: true,
+                data: []
+            });
+        }
+
+        const validatedLimit = validateInteger(limit, 'limit', 1, 20);
+        const sanitizedKeyword = sanitizePattern(normalizedQuery);
+
+        const params = [];
+        let paramCount = 1;
+
+        const ftsParam = paramCount;
+        const fuzzyParam = paramCount + 1;
+        const ilikeParam = paramCount + 2;
+        const exactPropertyIdParam = paramCount + 3;
+
+        params.push(
+            normalizedQuery,
+            normalizedQuery,
+            `%${sanitizedKeyword}%`,
+            normalizedQuery
+        );
+        paramCount += 4;
+
+        let query = `
+            SELECT
+                id,
+                property_id,
+                title,
+                type,
+                status,
+                province,
+                district,
+                sub_district,
+                slug,
+                size,
+                price,
+                price_alternative,
+                (
+                    CASE WHEN LOWER(COALESCE(property_id, '')) = LOWER($${exactPropertyIdParam}) THEN 5.0 ELSE 0 END +
+                    ts_rank_cd(
+                        (
+                            setweight(to_tsvector('simple', COALESCE(property_id, '')), 'A') ||
+                            setweight(to_tsvector('simple', COALESCE(title, '')), 'B')
+                        ),
+                        plainto_tsquery('simple', $${ftsParam})
+                    ) +
+                    (similarity(COALESCE(property_id, ''), $${fuzzyParam}) * 2.0) +
+                    (similarity(COALESCE(title, ''), $${fuzzyParam}) * 1.2)
+                ) AS search_rank
+            FROM properties
+            WHERE 1=1
+              AND (
+                    (
+                        setweight(to_tsvector('simple', COALESCE(property_id, '')), 'A') ||
+                        setweight(to_tsvector('simple', COALESCE(title, '')), 'B')
+                    ) @@ plainto_tsquery('simple', $${ftsParam})
+                    OR LOWER(COALESCE(property_id, '')) = LOWER($${exactPropertyIdParam})
+                    OR similarity(COALESCE(property_id, ''), $${fuzzyParam}) >= 0.35
+                    OR similarity(COALESCE(title, ''), $${fuzzyParam}) >= 0.25
+                    OR title ILIKE $${ilikeParam}
+                    OR property_id ILIKE $${ilikeParam}
+              )
+        `;
+
+        // Role-based visibility (same pattern as main endpoint)
+        if (!req.user) {
+            query += ` AND approve_status = 'published'`;
+        } else if (req.user.role === 'agent') {
+            query += ` AND agent_team = $${paramCount}`;
+            params.push(req.user.team);
+            paramCount++;
+        }
+
+        // Optional filters
+        if (status) {
+            const sanitizedStatus = sanitizePattern(status);
+            query += ` AND status ILIKE $${paramCount}`;
+            params.push(`%${sanitizedStatus}%`);
+            paramCount++;
+        }
+
+        if (type && type.toLowerCase() !== 'warehouse') {
+            const sanitizedType = sanitizePattern(type);
+            query += ` AND type ILIKE $${paramCount}`;
+            params.push(`%${sanitizedType}%`);
+            paramCount++;
+        }
+
+        if (province) {
+            const sanitizedProvince = sanitizePattern(province);
+            query += ` AND province ILIKE $${paramCount}`;
+            params.push(`%${sanitizedProvince}%`);
+            paramCount++;
+        }
+
+        if (district) {
+            const sanitizedDistrict = sanitizePattern(district);
+            query += ` AND district ILIKE $${paramCount}`;
+            params.push(`%${sanitizedDistrict}%`);
+            paramCount++;
+        }
+
+        if (sub_district) {
+            const sanitizedSubDistrict = sanitizePattern(sub_district);
+            query += ` AND sub_district ILIKE $${paramCount}`;
+            params.push(`%${sanitizedSubDistrict}%`);
+            paramCount++;
+        }
+
+        query += ` ORDER BY search_rank DESC, updated_at DESC LIMIT $${paramCount}`;
+        params.push(validatedLimit);
+
+        const result = await pool.query(query, params);
+
+        const suggestions = result.rows.map((row) => {
+            const locationParts = [row.sub_district, row.district, row.province].filter(Boolean);
+            return {
+                id: row.id,
+                property_id: row.property_id,
+                title: row.title,
+                subtitle: locationParts.join(', '),
+                type: row.type,
+                status: row.status,
+                slug: row.slug,
+                size: row.size,
+                price: row.price,
+                price_alternative: row.price_alternative
+            };
+        });
+
+        res.json({
+            success: true,
+            data: suggestions,
+            meta: {
+                query: normalizedQuery,
+                limit: validatedLimit
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching property suggestions:', error);
+        if (error.message.startsWith('Invalid')) {
+            return res.status(400).json({ success: false, error: error.message });
+        }
+        res.status(500).json({ success: false, error: 'Database error' });
+    }
+});
+
 // GET all properties with filters
 // Uses optionalAuth - guests can access but won't see secret fields
 router.get('/', optionalAuth, async (req, res) => {
@@ -422,11 +594,13 @@ router.get('/', optionalAuth, async (req, res) => {
             validatedLimit = validateInteger(limit, 'limit', 1, 1000); // Max 1000 items per page
         }
 
-        let query = 'SELECT * FROM properties WHERE 1=1';
+        let query = 'SELECT properties.* FROM properties WHERE 1=1';
         let countQuery = 'SELECT COUNT(*) FROM properties WHERE 1=1';
         const params = [];
         const countParams = [];
         let paramCount = 1;
+        let hasKeywordSearch = false;
+        let searchRankExpression = null;
 
         // Authorization filters based on user role
         if (!req.user) {
@@ -445,12 +619,73 @@ router.get('/', optionalAuth, async (req, res) => {
 
         // 1. Keyword search in title, property_id, and remarks
         if (keyword) {
-            const sanitizedKeyword = sanitizePattern(keyword);
-            query += ` AND (title ILIKE $${paramCount} OR property_id ILIKE $${paramCount} OR remarks ILIKE $${paramCount})`;
-            countQuery += ` AND (title ILIKE $${paramCount} OR property_id ILIKE $${paramCount} OR remarks ILIKE $${paramCount})`;
-            params.push(`%${sanitizedKeyword}%`);
-            countParams.push(`%${sanitizedKeyword}%`);
-            paramCount++;
+            const normalizedKeyword = normalizeKeyword(keyword);
+
+            if (normalizedKeyword.length > 0) {
+                hasKeywordSearch = true;
+                const sanitizedKeyword = sanitizePattern(normalizedKeyword);
+                const ftsParam = paramCount;
+                const fuzzyParam = paramCount + 1;
+                const ilikeParam = paramCount + 2;
+                const exactPropertyIdParam = paramCount + 3;
+
+                // Level 1: Full-text search for fast, index-friendly keyword search
+                // Level 2: Trigram similarity + fallback ILIKE for typo tolerance
+                query += ` AND (
+                    (
+                        setweight(to_tsvector('simple', COALESCE(property_id, '')), 'A') ||
+                        setweight(to_tsvector('simple', COALESCE(title, '')), 'B') ||
+                        setweight(to_tsvector('simple', COALESCE(remarks, '')), 'D')
+                    ) @@ plainto_tsquery('simple', $${ftsParam})
+                    OR LOWER(COALESCE(property_id, '')) = LOWER($${exactPropertyIdParam})
+                    OR similarity(COALESCE(property_id, ''), $${fuzzyParam}) >= 0.35
+                    OR similarity(COALESCE(title, ''), $${fuzzyParam}) >= 0.25
+                    OR similarity(COALESCE(remarks, ''), $${fuzzyParam}) >= 0.20
+                    OR title ILIKE $${ilikeParam}
+                    OR property_id ILIKE $${ilikeParam}
+                    OR remarks ILIKE $${ilikeParam}
+                )`;
+
+                countQuery += ` AND (
+                    (
+                        setweight(to_tsvector('simple', COALESCE(property_id, '')), 'A') ||
+                        setweight(to_tsvector('simple', COALESCE(title, '')), 'B') ||
+                        setweight(to_tsvector('simple', COALESCE(remarks, '')), 'D')
+                    ) @@ plainto_tsquery('simple', $${ftsParam})
+                    OR LOWER(COALESCE(property_id, '')) = LOWER($${exactPropertyIdParam})
+                    OR similarity(COALESCE(property_id, ''), $${fuzzyParam}) >= 0.35
+                    OR similarity(COALESCE(title, ''), $${fuzzyParam}) >= 0.25
+                    OR similarity(COALESCE(remarks, ''), $${fuzzyParam}) >= 0.20
+                    OR title ILIKE $${ilikeParam}
+                    OR property_id ILIKE $${ilikeParam}
+                    OR remarks ILIKE $${ilikeParam}
+                )`;
+
+                const ftsKeyword = normalizedKeyword;
+                const fuzzyKeyword = normalizedKeyword;
+                const ilikeKeyword = `%${sanitizedKeyword}%`;
+                const exactPropertyId = normalizedKeyword;
+
+                params.push(ftsKeyword, fuzzyKeyword, ilikeKeyword, exactPropertyId);
+                countParams.push(ftsKeyword, fuzzyKeyword, ilikeKeyword, exactPropertyId);
+
+                searchRankExpression = `(
+                    CASE WHEN LOWER(COALESCE(property_id, '')) = LOWER($${exactPropertyIdParam}) THEN 5.0 ELSE 0 END +
+                    ts_rank_cd(
+                        (
+                            setweight(to_tsvector('simple', COALESCE(property_id, '')), 'A') ||
+                            setweight(to_tsvector('simple', COALESCE(title, '')), 'B') ||
+                            setweight(to_tsvector('simple', COALESCE(remarks, '')), 'D')
+                        ),
+                        plainto_tsquery('simple', $${ftsParam})
+                    ) +
+                    (similarity(COALESCE(property_id, ''), $${fuzzyParam}) * 2.0) +
+                    (similarity(COALESCE(title, ''), $${fuzzyParam}) * 1.2) +
+                    (similarity(COALESCE(remarks, ''), $${fuzzyParam}) * 0.6)
+                )`;
+
+                paramCount += 4;
+            }
         }
 
         // 1b. Property ID search (partial match)
@@ -781,6 +1016,11 @@ router.get('/', optionalAuth, async (req, res) => {
             orderByClause = `ORDER BY ${priceField} ${validatedOrder}`;
         } else {
             orderByClause = `ORDER BY ${validatedSort} ${validatedOrder}`;
+        }
+
+        // Prioritize relevance when keyword search is active, then keep requested sorting as secondary
+        if (hasKeywordSearch && searchRankExpression) {
+            orderByClause = `ORDER BY ${searchRankExpression} DESC, ${orderByClause.replace('ORDER BY ', '')}`;
         }
 
         // Add ordering and pagination
