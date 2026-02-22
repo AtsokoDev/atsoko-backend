@@ -122,13 +122,8 @@ router.get('/remarks-suggestions', authenticate, async (req, res) => {
             floor_load
         } = req.query;
 
-        // เช็คว่าเป็น admin เท่านั้น
-        if (req.user.role !== 'admin') {
-            return res.status(403).json({
-                success: false,
-                error: 'Only admins can search remarks'
-            });
-        }
+        // Admin เห็นทั้งหมด, Agent เห็นแค่ properties ของ team ตัวเอง
+        // (role-based filter จะถูก apply ใน query ด้านล่าง)
 
         // ถ้าไม่มีคำค้นหา หรือสั้นเกินไป
         if (!q || q.trim().length < 2) {
@@ -168,8 +163,16 @@ router.get('/remarks-suggestions', authenticate, async (req, res) => {
         ];
         let paramCount = 3;
 
+        // Apply role-based filter
+        if (req.user.role === 'agent') {
+            // Agent: เห็นแค่ properties ของ team ตัวเอง
+            query += ` AND agent_team = $${paramCount}`;
+            params.push(req.user.team);
+            paramCount++;
+        }
+        // Admin: เห็นทั้งหมด (no filter needed)
+
         // Apply same filters as main endpoint
-        // Admin can see all properties (no role-based filter needed)
 
         // Status filter
         if (status) {
@@ -698,13 +701,13 @@ router.get('/', optionalAuth, async (req, res) => {
             paramCount++;
         }
 
-        // 1c. Remarks-only search (Admin only)
+        // 1c. Remarks-only search (Admin + Agent)
         if (remarks) {
-            // เช็คว่าเป็น admin เท่านั้น
-            if (!req.user || req.user.role !== 'admin') {
-                return res.status(403).json({
+            // ต้อง login ถึงจะใช้ remarks filter ได้
+            if (!req.user) {
+                return res.status(401).json({
                     success: false,
-                    error: 'Only admins can search remarks'
+                    error: 'Authentication required to search remarks'
                 });
             }
 
