@@ -440,15 +440,20 @@ router.get('/suggestions', optionalAuth, async (req, res) => {
             FROM properties
             WHERE 1=1
               AND (
-                    (
-                        setweight(to_tsvector('simple', COALESCE(property_id, '')), 'A') ||
-                        setweight(to_tsvector('simple', COALESCE(title, '')), 'B')
-                    ) @@ plainto_tsquery('simple', $${ftsParam})
-                    OR LOWER(COALESCE(property_id, '')) = LOWER($${exactPropertyIdParam})
-                    OR similarity(COALESCE(property_id, ''), $${fuzzyParam}) >= 0.35
-                    OR similarity(COALESCE(title, ''), $${fuzzyParam}) >= 0.25
-                    OR title ILIKE $${ilikeParam}
+                    LOWER(COALESCE(property_id, '')) = LOWER($${exactPropertyIdParam})
                     OR property_id ILIKE $${ilikeParam}
+                    OR (
+                        NOT ($${exactPropertyIdParam} ~ '^AT[0-9]+(R|S|SR)?$')
+                        AND (
+                            (
+                                setweight(to_tsvector('simple', COALESCE(property_id, '')), 'A') ||
+                                setweight(to_tsvector('simple', COALESCE(title, '')), 'B')
+                            ) @@ plainto_tsquery('simple', $${ftsParam})
+                            OR similarity(COALESCE(property_id, ''), $${fuzzyParam}) >= 0.35
+                            OR similarity(COALESCE(title, ''), $${fuzzyParam}) >= 0.25
+                            OR title ILIKE $${ilikeParam}
+                        )
+                    )
               )
         `;
 
@@ -627,67 +632,93 @@ router.get('/', optionalAuth, async (req, res) => {
             if (normalizedKeyword.length > 0) {
                 hasKeywordSearch = true;
                 const sanitizedKeyword = sanitizePattern(normalizedKeyword);
-                const ftsParam = paramCount;
-                const fuzzyParam = paramCount + 1;
-                const ilikeParam = paramCount + 2;
-                const exactPropertyIdParam = paramCount + 3;
 
-                // Level 1: Full-text search for fast, index-friendly keyword search
-                // Level 2: Trigram similarity + fallback ILIKE for typo tolerance
-                query += ` AND (
-                    (
-                        setweight(to_tsvector('simple', COALESCE(property_id, '')), 'A') ||
-                        setweight(to_tsvector('simple', COALESCE(title, '')), 'B') ||
-                        setweight(to_tsvector('simple', COALESCE(remarks, '')), 'D')
-                    ) @@ plainto_tsquery('simple', $${ftsParam})
-                    OR LOWER(COALESCE(property_id, '')) = LOWER($${exactPropertyIdParam})
-                    OR similarity(COALESCE(property_id, ''), $${fuzzyParam}) >= 0.35
-                    OR similarity(COALESCE(title, ''), $${fuzzyParam}) >= 0.25
-                    OR similarity(COALESCE(remarks, ''), $${fuzzyParam}) >= 0.20
-                    OR title ILIKE $${ilikeParam}
-                    OR property_id ILIKE $${ilikeParam}
-                    OR remarks ILIKE $${ilikeParam}
-                )`;
+                // Detect if keyword looks like a Property ID (e.g. AT1594R, AT200SR, AT50S)
+                // If so, use exact/ILIKE only — skip fuzzy (trigram/FTS) to avoid false matches
+                const isPropertyIdPattern = /^AT\d+(R|S|SR)?$/i.test(normalizedKeyword.trim());
 
-                countQuery += ` AND (
-                    (
-                        setweight(to_tsvector('simple', COALESCE(property_id, '')), 'A') ||
-                        setweight(to_tsvector('simple', COALESCE(title, '')), 'B') ||
-                        setweight(to_tsvector('simple', COALESCE(remarks, '')), 'D')
-                    ) @@ plainto_tsquery('simple', $${ftsParam})
-                    OR LOWER(COALESCE(property_id, '')) = LOWER($${exactPropertyIdParam})
-                    OR similarity(COALESCE(property_id, ''), $${fuzzyParam}) >= 0.35
-                    OR similarity(COALESCE(title, ''), $${fuzzyParam}) >= 0.25
-                    OR similarity(COALESCE(remarks, ''), $${fuzzyParam}) >= 0.20
-                    OR title ILIKE $${ilikeParam}
-                    OR property_id ILIKE $${ilikeParam}
-                    OR remarks ILIKE $${ilikeParam}
-                )`;
+                if (isPropertyIdPattern) {
+                    // *** Strict mode: Property ID pattern detected ***
+                    // Only exact match (case-insensitive) or substring ILIKE
+                    const exactPropertyIdParam = paramCount;
+                    const ilikeParam = paramCount + 1;
 
-                const ftsKeyword = normalizedKeyword;
-                const fuzzyKeyword = normalizedKeyword;
-                const ilikeKeyword = `%${sanitizedKeyword}%`;
-                const exactPropertyId = normalizedKeyword;
+                    const exactSearchClause = `AND (
+                        LOWER(COALESCE(property_id, '')) = LOWER($${exactPropertyIdParam})
+                        OR property_id ILIKE $${ilikeParam}
+                    )`;
 
-                params.push(ftsKeyword, fuzzyKeyword, ilikeKeyword, exactPropertyId);
-                countParams.push(ftsKeyword, fuzzyKeyword, ilikeKeyword, exactPropertyId);
+                    query += ` ${exactSearchClause}`;
+                    countQuery += ` ${exactSearchClause}`;
 
-                searchRankExpression = `(
-                    CASE WHEN LOWER(COALESCE(property_id, '')) = LOWER($${exactPropertyIdParam}) THEN 5.0 ELSE 0 END +
-                    ts_rank_cd(
+                    params.push(normalizedKeyword, `%${sanitizedKeyword}%`);
+                    countParams.push(normalizedKeyword, `%${sanitizedKeyword}%`);
+
+                    // Rank: exact match gets highest priority, ILIKE match gets secondary
+                    searchRankExpression = `(
+                        CASE WHEN LOWER(COALESCE(property_id, '')) = LOWER($${exactPropertyIdParam}) THEN 10.0 ELSE 1.0 END
+                    )`;
+
+                    paramCount += 2;
+                } else {
+                    // *** Normal mode: General keyword — use full fuzzy search pipeline ***
+                    const ftsParam = paramCount;
+                    const fuzzyParam = paramCount + 1;
+                    const ilikeParam = paramCount + 2;
+                    const exactPropertyIdParam = paramCount + 3;
+
+                    // Level 1: Full-text search for fast, index-friendly keyword search
+                    // Level 2: Trigram similarity + fallback ILIKE for typo tolerance
+                    query += ` AND (
                         (
                             setweight(to_tsvector('simple', COALESCE(property_id, '')), 'A') ||
                             setweight(to_tsvector('simple', COALESCE(title, '')), 'B') ||
                             setweight(to_tsvector('simple', COALESCE(remarks, '')), 'D')
-                        ),
-                        plainto_tsquery('simple', $${ftsParam})
-                    ) +
-                    (similarity(COALESCE(property_id, ''), $${fuzzyParam}) * 2.0) +
-                    (similarity(COALESCE(title, ''), $${fuzzyParam}) * 1.2) +
-                    (similarity(COALESCE(remarks, ''), $${fuzzyParam}) * 0.6)
-                )`;
+                        ) @@ plainto_tsquery('simple', $${ftsParam})
+                        OR LOWER(COALESCE(property_id, '')) = LOWER($${exactPropertyIdParam})
+                        OR similarity(COALESCE(property_id, ''), $${fuzzyParam}) >= 0.35
+                        OR similarity(COALESCE(title, ''), $${fuzzyParam}) >= 0.25
+                        OR similarity(COALESCE(remarks, ''), $${fuzzyParam}) >= 0.20
+                        OR title ILIKE $${ilikeParam}
+                        OR property_id ILIKE $${ilikeParam}
+                        OR remarks ILIKE $${ilikeParam}
+                    )`;
 
-                paramCount += 4;
+                    countQuery += ` AND (
+                        (
+                            setweight(to_tsvector('simple', COALESCE(property_id, '')), 'A') ||
+                            setweight(to_tsvector('simple', COALESCE(title, '')), 'B') ||
+                            setweight(to_tsvector('simple', COALESCE(remarks, '')), 'D')
+                        ) @@ plainto_tsquery('simple', $${ftsParam})
+                        OR LOWER(COALESCE(property_id, '')) = LOWER($${exactPropertyIdParam})
+                        OR similarity(COALESCE(property_id, ''), $${fuzzyParam}) >= 0.35
+                        OR similarity(COALESCE(title, ''), $${fuzzyParam}) >= 0.25
+                        OR similarity(COALESCE(remarks, ''), $${fuzzyParam}) >= 0.20
+                        OR title ILIKE $${ilikeParam}
+                        OR property_id ILIKE $${ilikeParam}
+                        OR remarks ILIKE $${ilikeParam}
+                    )`;
+
+                    params.push(normalizedKeyword, normalizedKeyword, `%${sanitizedKeyword}%`, normalizedKeyword);
+                    countParams.push(normalizedKeyword, normalizedKeyword, `%${sanitizedKeyword}%`, normalizedKeyword);
+
+                    searchRankExpression = `(
+                        CASE WHEN LOWER(COALESCE(property_id, '')) = LOWER($${exactPropertyIdParam}) THEN 5.0 ELSE 0 END +
+                        ts_rank_cd(
+                            (
+                                setweight(to_tsvector('simple', COALESCE(property_id, '')), 'A') ||
+                                setweight(to_tsvector('simple', COALESCE(title, '')), 'B') ||
+                                setweight(to_tsvector('simple', COALESCE(remarks, '')), 'D')
+                            ),
+                            plainto_tsquery('simple', $${ftsParam})
+                        ) +
+                        (similarity(COALESCE(property_id, ''), $${fuzzyParam}) * 2.0) +
+                        (similarity(COALESCE(title, ''), $${fuzzyParam}) * 1.2) +
+                        (similarity(COALESCE(remarks, ''), $${fuzzyParam}) * 0.6)
+                    )`;
+
+                    paramCount += 4;
+                }
             }
         }
 
