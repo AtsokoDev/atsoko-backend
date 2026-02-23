@@ -66,7 +66,7 @@ const findNextAvailablePropertyNumber = async (client) => {
             SELECT DISTINCT
                 CAST(SUBSTRING(property_id FROM '^AT([0-9]+)') AS INTEGER) as num
             FROM properties 
-            WHERE property_id ~ '^AT[0-9]+(R|S|SR)$'
+            WHERE property_id ~* '^AT[0-9]+(SR|S|R)$'
         ),
         max_num AS (
             SELECT COALESCE(MAX(num), 0) as max_val FROM used_numbers
@@ -1847,6 +1847,66 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
             console.log('[UPDATE PROPERTY] ℹ️  No title regeneration needed');
         }
 
+        // ========================================================================
+        // AUTO-UPDATE PROPERTY_ID SUFFIX when status changes
+        // e.g. Rent → Rent & Sale:  AT59R  → AT59SR
+        //      Sale → Rent:         AT59S  → AT59R
+        //      Rent → Sale:         AT59R  → AT59S
+        // Only updates if the suffix actually changes (no-op when status unchanged)
+        // ========================================================================
+        if (fieldsToUpdate.includes('status') && data.status) {
+            try {
+                const updatedProperty = result.rows[0];
+                const currentPropertyId = updatedProperty.property_id;
+
+                // Only auto-update if it follows our AT{number}{suffix} format
+                const propIdMatch = currentPropertyId && currentPropertyId.match(/^(AT)([0-9]+)(R|S|SR)$/i);
+
+                if (propIdMatch) {
+                    const prefix = propIdMatch[1];       // "AT"
+                    const number = propIdMatch[2];       // e.g. "59"
+                    const currentSuffix = propIdMatch[3].toUpperCase(); // e.g. "R"
+
+                    // Determine correct suffix from the new status
+                    const getStatusCode = (status) => {
+                        if (!status) return 'R';
+                        const s = status.toLowerCase();
+                        if (s.includes('rent') && s.includes('sale')) return 'SR';
+                        if (s.includes('sale')) return 'S';
+                        return 'R';
+                    };
+                    const correctSuffix = getStatusCode(data.status);
+
+                    if (currentSuffix !== correctSuffix) {
+                        const newPropertyId = `${prefix}${number}${correctSuffix}`;
+                        const newSlug = updatedProperty.slug
+                            ? updatedProperty.slug.replace(currentPropertyId.toLowerCase(), newPropertyId.toLowerCase())
+                            : null;
+
+                        console.log(`[UPDATE PROPERTY] 🔄 Property ID suffix mismatch — updating: ${currentPropertyId} → ${newPropertyId}`);
+
+                        await pool.query(
+                            'UPDATE properties SET property_id = $1, slug = $2 WHERE id = $3',
+                            [newPropertyId, newSlug, updatedProperty.id]
+                        );
+
+                        // Reflect in response
+                        result.rows[0].property_id = newPropertyId;
+                        if (newSlug) result.rows[0].slug = newSlug;
+
+                        console.log(`[UPDATE PROPERTY] ✅ Property ID updated: ${currentPropertyId} → ${newPropertyId}`);
+                    } else {
+                        console.log(`[UPDATE PROPERTY] ℹ️  Property ID suffix already correct (${currentSuffix})`);
+                    }
+                } else {
+                    console.log(`[UPDATE PROPERTY] ℹ️  Property ID "${currentPropertyId}" does not match AT pattern — skipping suffix update`);
+                }
+            } catch (pidError) {
+                console.error('[UPDATE PROPERTY] ❌ Property ID suffix update failed:', pidError.message);
+                // Non-fatal — continue without updating property_id
+            }
+        }
+
         // If images were updated, delete removed image files from disk
         if (data.images !== undefined) {
             // Ensure oldImages is an array
@@ -1975,3 +2035,4 @@ router.delete('/:id', authenticate, authorize(['admin', 'agent']), async (req, r
 
 
 module.exports = router;
+
