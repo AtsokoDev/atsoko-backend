@@ -213,6 +213,9 @@ router.post('/images', upload.array('images', 20), handleUploadError, async (req
         const actualPropertyId = property.property_id; // e.g. AT2059R
         const statusCode = getStatusCode(property.status);
 
+        // Fetch DB images
+        const dbImages = property.images || [];
+
         // Use existing_images from request if provided, otherwise use current images from database
         // This allows frontend to control which images to keep (e.g., after deleting some)
         let baseImages = [];
@@ -224,7 +227,7 @@ router.post('/images', upload.array('images', 20), handleUploadError, async (req
             console.log('[UPLOAD IMAGES] Using existing_images from request:', baseImages);
         } else {
             // Fallback to database images
-            baseImages = property.images || [];
+            baseImages = dbImages;
             console.log('[UPLOAD IMAGES] Using images from database:', baseImages);
         }
 
@@ -266,18 +269,24 @@ router.post('/images', upload.array('images', 20), handleUploadError, async (req
             nextNumber++;
         }
 
-        // Merge: baseImages (from request or database) + newFilenames
-        const allImages = [...baseImages];
-        newFilenames.forEach(filename => {
-            if (!allImages.includes(filename)) {
-                allImages.push(filename);
-            }
-        });
+        // Clean up files that were removed from the property but existed in the DB
+        // NOTE: We do not update the `properties` table here anymore!
+        // We just do the file system upload and return the filenames.
+        // The frontend will send the final ordered array in the next PUT request to /api/properties/:id 
 
-        await pool.query(
-            'UPDATE properties SET images = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-            [JSON.stringify(allImages), property_id]
-        );
+        // Find detached DB images to delete (if any)
+        if (existing_images) {
+            const removedImages = dbImages.filter(img => !baseImages.includes(img));
+            for (const filename of removedImages) {
+                try {
+                    const filePath = path.join(uploadDir, filename);
+                    await fs.unlink(filePath);
+                    console.log(`[UPLOAD IMAGES] Deleted detached image file: ${filename}`);
+                } catch (err) {
+                    console.warn(`[UPLOAD IMAGES] Could not delete image file: ${filename}`, err.message);
+                }
+            }
+        }
 
         res.json({
             success: true,
@@ -285,9 +294,7 @@ router.post('/images', upload.array('images', 20), handleUploadError, async (req
             data: {
                 property_id: property_id,
                 status_code: statusCode,
-                images: allImages,  // Return final images array for frontend
-                uploaded: uploadedFiles,
-                total_images: allImages.length
+                uploaded: uploadedFiles
             }
         });
 

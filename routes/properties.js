@@ -575,6 +575,10 @@ router.get('/', optionalAuth, async (req, res) => {
             clear_height,      // Clear height exact match (frontend)
             // Other filters
             floor_load,        // Floor loading
+            // Header table filters
+            agent_team,
+            workflow_status,
+            approve_status,
             // Sorting options (no defaults - handled in sorting logic below)
             sort,              // Sort field or combined format (e.g., 'updated_desc', 'price_asc')
             order,             // Sort order ('asc' or 'desc') - for legacy format only
@@ -988,6 +992,31 @@ router.get('/', optionalAuth, async (req, res) => {
                 countParams.push(minFloorLoad);
                 paramCount++;
             }
+        }
+
+        // 14. Table Header Filters (agent_team, workflow_status, approve_status)
+        if (agent_team && req.user && req.user.role === 'admin') {
+            query += ` AND agent_team = $${paramCount}`;
+            countQuery += ` AND agent_team = $${paramCount}`;
+            params.push(agent_team);
+            countParams.push(agent_team);
+            paramCount++;
+        }
+
+        if (workflow_status) {
+            query += ` AND workflow_status = $${paramCount}`;
+            countQuery += ` AND workflow_status = $${paramCount}`;
+            params.push(workflow_status);
+            countParams.push(workflow_status);
+            paramCount++;
+        }
+
+        if (approve_status && req.user) {
+            query += ` AND approve_status = $${paramCount}`;
+            countQuery += ` AND approve_status = $${paramCount}`;
+            params.push(approve_status);
+            countParams.push(approve_status);
+            paramCount++;
         }
 
 
