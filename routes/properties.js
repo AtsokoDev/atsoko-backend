@@ -44,6 +44,13 @@ const normalizeKeyword = (value) => {
     return value.trim().replace(/\s+/g, ' ');
 };
 
+const ALLOWED_BUILDING_TYPES = ['S', 'C', 'W'];
+
+const normalizeBuildingType = (value) => {
+    if (typeof value !== 'string') return '';
+    return value.trim().toUpperCase();
+};
+
 /**
  * Find the next available property number.
  * This function looks for "gaps" in existing property IDs (e.g., if AT1R, AT3R exist, it returns 2)
@@ -1238,13 +1245,21 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
 
         // Define required fields (property_id and titles are auto-generated)
         // Can use either legacy text fields OR new ID fields for type/status/location
-        const requiredFields = ['type', 'province', 'district', 'sub_district', 'size', 'status'];
+        const requiredFields = ['type', 'province', 'district', 'sub_district', 'size', 'status', 'building_type'];
         const missingFields = requiredFields.filter(field => !data[field]);
 
         if (missingFields.length > 0) {
             return res.status(400).json({
                 success: false,
                 error: `Missing required fields: ${missingFields.join(', ')}`
+            });
+        }
+
+        data.building_type = normalizeBuildingType(data.building_type);
+        if (!ALLOWED_BUILDING_TYPES.includes(data.building_type)) {
+            return res.status(400).json({
+                success: false,
+                error: `Invalid building_type. Allowed values: ${ALLOWED_BUILDING_TYPES.join(', ')}`
             });
         }
 
@@ -1590,6 +1605,12 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
                 error: 'Invalid reference to related data'
             });
         }
+        if (error.code === '22001') {
+            return res.status(400).json({
+                success: false,
+                error: 'One or more fields exceed maximum length'
+            });
+        }
         res.status(500).json({ success: false, error: 'Database error' });
     }
 });
@@ -1693,6 +1714,16 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
         const fieldsToUpdate = Object.keys(data).filter(key => allowedFields.includes(key));
         if (fieldsToUpdate.length === 0) {
             return res.status(400).json({ success: false, error: 'No valid fields to update' });
+        }
+
+        if (Object.prototype.hasOwnProperty.call(data, 'building_type')) {
+            data.building_type = normalizeBuildingType(data.building_type);
+            if (!ALLOWED_BUILDING_TYPES.includes(data.building_type)) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Invalid building_type. Allowed values: ${ALLOWED_BUILDING_TYPES.join(', ')}`
+                });
+            }
         }
 
         // Sanitize numeric fields - convert empty strings to null
@@ -1986,6 +2017,9 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
         // Check for specific database errors
         if (error.code === '23505') {
             return res.status(409).json({ success: false, error: 'Duplicate property_id or slug' });
+        }
+        if (error.code === '22001') {
+            return res.status(400).json({ success: false, error: 'One or more fields exceed maximum length' });
         }
         res.status(500).json({ success: false, error: 'Database error' });
     }
