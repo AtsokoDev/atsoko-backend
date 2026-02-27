@@ -223,10 +223,10 @@ router.put('/:id/process', authenticate, authorize(['admin']), async (req, res) 
         const { id } = req.params;
         const { action, admin_response } = req.body;
 
-        if (!['approve', 'reject'].includes(action)) {
+        if (!['approve', 'reject', 'approve_unpublish'].includes(action)) {
             return res.status(400).json({
                 success: false,
-                error: 'action must be "approve" or "reject"'
+                error: 'action must be "approve", "approve_unpublish", or "reject"'
             });
         }
 
@@ -259,7 +259,7 @@ router.put('/:id/process', authenticate, authorize(['admin']), async (req, res) 
             });
         }
 
-        const newStatus = action === 'approve' ? 'approved' : 'rejected';
+        const newStatus = (action === 'approve' || action === 'approve_unpublish') ? 'approved' : 'rejected';
 
         // Update the request
         await client.query(
@@ -332,6 +332,24 @@ router.put('/:id/process', authenticate, authorize(['admin']), async (req, res) 
             }
         }
 
+        // approve_unpublish: mark request approved but unpublish the listing instead of deleting
+        if (action === 'approve_unpublish') {
+            // Set property back to pending (unpublished) — data preserved, admin can restore later
+            await client.query(
+                `UPDATE properties SET approve_status = 'pending', workflow_status = 'pending', updated_at = NOW() WHERE id = $1`,
+                [request.property_id]
+            );
+
+            // Record in workflow history
+            await client.query(
+                `INSERT INTO workflow_history 
+                 (property_id, previous_approval_status, new_approval_status, changed_by, reason)
+                 VALUES ($1, $2, 'pending', $3, $4)`,
+                [request.property_id, request.approve_status, req.user.id,
+                `Delete request approved as unpublish. Reason: ${admin_response || 'N/A'}`]
+            );
+        }
+
         // Add admin note
         if (admin_response) {
             await client.query(
@@ -339,7 +357,7 @@ router.put('/:id/process', authenticate, authorize(['admin']), async (req, res) 
                  (property_id, request_id, author_id, note_type, content)
                  VALUES ($1, $2, $3, $4, $5)`,
                 [request.property_id, id, req.user.id,
-                action === 'approve' ? 'approval' : 'rejection',
+                action === 'reject' ? 'rejection' : 'approval',
                     admin_response]
             );
         }
