@@ -34,8 +34,17 @@ const applyWatermark = async (imageBuffer) => {
         // Get watermark dimensions
         const watermarkMeta = await sharp(watermark).metadata();
 
-        // Calculate position (bottom-right with margin)
-        const left = metadata.width - watermarkMeta.width - WATERMARK_MARGIN_RIGHT;
+        // Detect transparent padding on right side of watermark PNG
+        // so the visible logo hugs the right edge rather than leaving a gap
+        const originalWatermarkMeta = await sharp(WATERMARK_PATH).metadata();
+        const watermarkTrimmedBuf = await sharp(WATERMARK_PATH).trim().toBuffer();
+        const watermarkTrimmedMeta = await sharp(watermarkTrimmedBuf).metadata();
+        const rightPaddingPixels = Math.floor(
+            watermarkMeta.width * (1 - watermarkTrimmedMeta.width / originalWatermarkMeta.width) * 0.5
+        );
+
+        // Calculate position (bottom-right with margin), offset by right transparent padding
+        const left = metadata.width - watermarkMeta.width - WATERMARK_MARGIN_RIGHT + rightPaddingPixels;
         const top = metadata.height - watermarkMeta.height - WATERMARK_MARGIN_BOTTOM;
 
         // Apply watermark and convert to WebP
