@@ -466,7 +466,7 @@ router.get('/suggestions', optionalAuth, async (req, res) => {
 
         // Role-based visibility (same pattern as main endpoint)
         if (!req.user) {
-            query += ` AND approve_status = 'published'`;
+            query += ` AND publication_status = 'published'`;
         } else if (req.user.role === 'agent') {
             query += ` AND agent_team = $${paramCount}`;
             params.push(req.user.team);
@@ -584,14 +584,17 @@ router.get('/', optionalAuth, async (req, res) => {
             floor_load,        // Floor loading
             // Header table filters
             agent_team,
-            workflow_status,
-            approve_status,
+            publication_status,  // Filter by publication_status
+            moderation_status,   // New: filter by moderation_status
             // Sorting options (no defaults - handled in sorting logic below)
             sort,              // Sort field or combined format (e.g., 'updated_desc', 'price_asc')
             order,             // Sort order ('asc' or 'desc') - for legacy format only
             page = 1,
             limit
         } = req.query;
+
+        const effectivePubStatus = publication_status || null;
+        const effectiveModStatus = moderation_status || null;
 
         // Use frontend naming if provided, fallback to legacy
         const effectiveMinSize = size_min || min_size;
@@ -624,8 +627,8 @@ router.get('/', optionalAuth, async (req, res) => {
         // Authorization filters based on user role
         if (!req.user) {
             // Guest: only see published properties
-            query += ` AND approve_status = 'published'`;
-            countQuery += ` AND approve_status = 'published'`;
+            query += ` AND publication_status = 'published'`;
+            countQuery += ` AND publication_status = 'published'`;
         } else if (req.user.role === 'agent') {
             // Agent: see their team's properties (any status)
             query += ` AND agent_team = $${paramCount}`;
@@ -1001,7 +1004,7 @@ router.get('/', optionalAuth, async (req, res) => {
             }
         }
 
-        // 14. Table Header Filters (agent_team, workflow_status, approve_status)
+        // 14. Table Header Filters (agent_team, publication_status, moderation_status)
         if (agent_team && req.user && req.user.role === 'admin') {
             query += ` AND agent_team = $${paramCount}`;
             countQuery += ` AND agent_team = $${paramCount}`;
@@ -1010,19 +1013,21 @@ router.get('/', optionalAuth, async (req, res) => {
             paramCount++;
         }
 
-        if (workflow_status) {
-            query += ` AND workflow_status = $${paramCount}`;
-            countQuery += ` AND workflow_status = $${paramCount}`;
-            params.push(workflow_status);
-            countParams.push(workflow_status);
+        // Filter by publication_status
+        if (effectivePubStatus && req.user) {
+            query += ` AND publication_status = $${paramCount}`;
+            countQuery += ` AND publication_status = $${paramCount}`;
+            params.push(effectivePubStatus);
+            countParams.push(effectivePubStatus);
             paramCount++;
         }
 
-        if (approve_status && req.user) {
-            query += ` AND approve_status = $${paramCount}`;
-            countQuery += ` AND approve_status = $${paramCount}`;
-            params.push(approve_status);
-            countParams.push(approve_status);
+        // Filter by moderation_status
+        if (effectiveModStatus) {
+            query += ` AND COALESCE(moderation_status, 'none') = $${paramCount}`;
+            countQuery += ` AND COALESCE(moderation_status, 'none') = $${paramCount}`;
+            params.push(effectiveModStatus);
+            countParams.push(effectiveModStatus);
             paramCount++;
         }
 
@@ -1190,7 +1195,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
         // Apply access restrictions
         if (!req.user) {
             // Guest: only published properties
-            baseQuery += " AND approve_status = 'published'";
+            baseQuery += " AND publication_status = 'published'";
             console.log('[GET /properties/:id] Applying GUEST restrictions (published only)');
         } else if (req.user.role === 'agent') {
             // Agent: only their team's properties
@@ -1335,9 +1340,11 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
             // Category and Tags
             "category",
             "tags",
-            // Workflow fields
-            "workflow_status",
-            "approve_status"
+            // New workflow fields (canonical — clients should use these)
+            "publication_status",
+            "moderation_status"
+            // NOTE: publication_status and moderation_status are managed server-side.
+            //       Clients should not set them directly.
         ];
 
         // Filter only allowed fields from request
@@ -1347,28 +1354,27 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
             return res.status(400).json({ success: false, error: 'No valid fields provided' });
         }
 
-        // For agents: force agent_team to their team, approve_status to pending, and workflow_status to pending
+        // For agents: create as Draft (new flow)
         if (req.user.role === 'agent') {
             data.agent_team = req.user.team;
-            data.approve_status = 'pending';
-            data.workflow_status = 'pending';
+            // New status fields (source of truth)
+            data.publication_status = 'draft';
+            data.moderation_status = 'none';
             // Ensure these fields are included
             if (!fieldsToInsert.includes('agent_team')) fieldsToInsert.push('agent_team');
-            if (!fieldsToInsert.includes('approve_status')) fieldsToInsert.push('approve_status');
-            if (!fieldsToInsert.includes('workflow_status')) fieldsToInsert.push('workflow_status');
+            if (!fieldsToInsert.includes('publication_status')) fieldsToInsert.push('publication_status');
+            if (!fieldsToInsert.includes('moderation_status')) fieldsToInsert.push('moderation_status');
         } else if (req.user.role === 'admin') {
-            // Admin can set any status, default to published if not specified
-            if (!data.approve_status) {
-                data.approve_status = 'published';
-                if (!fieldsToInsert.includes('approve_status')) fieldsToInsert.push('approve_status');
+            // Admin can set publication_status
+            if (!data.publication_status) {
+                data.publication_status = 'published'; // Admin default
             }
-            // Admin default workflow_status
-            if (!data.workflow_status) {
-                // If approve_status is 'published', set workflow_status to 'ready_to_publish'
-                // Otherwise, set to 'pending'
-                data.workflow_status = data.approve_status === 'published' ? 'ready_to_publish' : 'pending';
-                if (!fieldsToInsert.includes('workflow_status')) fieldsToInsert.push('workflow_status');
+            if (!data.moderation_status) {
+                data.moderation_status = 'none';
             }
+
+            if (!fieldsToInsert.includes('publication_status')) fieldsToInsert.push('publication_status');
+            if (!fieldsToInsert.includes('moderation_status')) fieldsToInsert.push('moderation_status');
         }
 
         // Helper function to get status code
@@ -1648,17 +1654,50 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
         // Check permissions using canModifyProperty
         if (!canModifyProperty(req.user, property)) {
             // Provide helpful error message
-            if (req.user.role === 'agent' && property.approve_status === 'published') {
+            const pubStatus = property.publication_status;
+            const modStatus = property.moderation_status || 'none';
+
+            if (req.user.role === 'agent' && pubStatus === 'published') {
                 return res.status(403).json({
                     success: false,
                     error: 'Published properties cannot be edited directly. Please use the Edit Request feature.',
                     requiresRequest: true
                 });
             }
+            if (['pending_add', 'pending_edit', 'pending_delete'].includes(modStatus)) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'This property is locked during moderation review. Please wait for admin response.',
+                    locked: true,
+                    moderation_status: modStatus
+                });
+            }
             return res.status(403).json({
                 success: false,
                 error: 'You do not have permission to modify this property'
             });
+        }
+
+        // Admin editing a published property: create version snapshot + mark stale requests
+        if (req.user.role === 'admin') {
+            const pubStatus = property.publication_status;
+            if (pubStatus === 'published') {
+                // Mark any pending versions as stale
+                await pool.query(
+                    `UPDATE property_versions 
+                     SET admin_note = COALESCE(admin_note, '') || ' [STALE: Admin edited live data at ' || NOW()::text || ']',
+                         updated_at = NOW()
+                     WHERE property_id = $1 AND status IN ('pending', 'draft', 'rejected')`,
+                    [property.id]
+                );
+                // Mark any pending requests as stale
+                await pool.query(
+                    `UPDATE property_requests 
+                     SET stale_since = NOW()
+                     WHERE property_id = $1 AND status = 'pending' AND stale_since IS NULL`,
+                    [property.id]
+                );
+            }
         }
 
         let allowedFields = [
@@ -1703,12 +1742,14 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
             "tags"
         ];
 
-        // Only admin can change approve_status and agent_team
+        // Only admin can change status fields and agent_team
         if (req.user.role === 'admin') {
-            allowedFields.push('approve_status');
+            // Admin can set new status fields; legacy fields are synced server-side
+            allowedFields.push('publication_status', 'moderation_status');
+            // NOTE: publication_status/moderation_status managed server-side
         } else {
-            // Agents cannot change agent_team or approve_status
-            allowedFields = allowedFields.filter(f => f !== 'agent_team' && f !== 'approve_status');
+            // Agents cannot change agent_team or any status fields
+            allowedFields = allowedFields.filter(f => !['agent_team', 'publication_status', 'moderation_status'].includes(f));
         }
 
         const fieldsToUpdate = Object.keys(data).filter(key => allowedFields.includes(key));
@@ -2026,7 +2067,8 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
 });
 
 // DELETE /api/properties/:id
-// Requires authentication - Admin or Agent (Agent can only delete unpublished)
+// Requires authentication - Admin or Agent
+// Always soft delete (set publication_status = 'deleted', preserve data)
 router.delete('/:id', authenticate, authorize(['admin', 'agent']), async (req, res) => {
     try {
         const id = req.params.id;
@@ -2051,8 +2093,8 @@ router.delete('/:id', authenticate, authorize(['admin', 'agent']), async (req, r
 
         // Check permissions using canDeleteProperty
         if (!canDeleteProperty(req.user, property)) {
-            // Provide helpful error message for agents
-            if (req.user.role === 'agent' && property.approve_status === 'published') {
+            const pubStatus = property.publication_status;
+            if (req.user.role === 'agent' && pubStatus === 'published') {
                 return res.status(403).json({
                     success: false,
                     error: 'Published properties cannot be deleted directly. Please use the Delete Request feature.',
@@ -2065,35 +2107,52 @@ router.delete('/:id', authenticate, authorize(['admin', 'agent']), async (req, r
             });
         }
 
+        // Soft delete: set status to deleted, preserve all data
         let query = '';
         let params = [];
 
-        // Check if id is numeric (internal id) or string (property_id)
         if (/^\d+$/.test(id)) {
-            query = 'DELETE FROM properties WHERE id = $1 RETURNING *';
-            params = [Number(id)];
+            query = `UPDATE properties 
+                     SET publication_status = 'deleted', moderation_status = 'none',
+                         deleted_at = NOW(), deleted_by = $2,
+                         updated_at = NOW()
+                     WHERE id = $1 RETURNING *`;
+            params = [Number(id), req.user.id];
         } else {
-            query = 'DELETE FROM properties WHERE property_id = $1 RETURNING *';
-            params = [id];
+            query = `UPDATE properties 
+                     SET publication_status = 'deleted', moderation_status = 'none',
+                         deleted_at = NOW(), deleted_by = $2,
+                         updated_at = NOW()
+                     WHERE property_id = $1 RETURNING *`;
+            params = [id, req.user.id];
         }
 
         const result = await pool.query(query, params);
 
+        // Discard any pending versions
+        await pool.query(
+            `UPDATE property_versions 
+             SET status = 'discarded', admin_note = 'Property deleted', updated_at = NOW()
+             WHERE property_id = $1 AND status IN ('pending', 'draft', 'rejected')`,
+            [property.id]
+        );
+
+        // Record in workflow history
+        await pool.query(
+            `INSERT INTO workflow_history 
+             (property_id, previous_approval_status, new_approval_status, changed_by, reason)
+             VALUES ($1, $2, 'deleted', $3, 'Property soft deleted')`,
+            [property.id, property.publication_status || 'unknown', req.user.id]
+        );
+
         res.json({
             success: true,
             message: 'Property deleted successfully',
-            data: result.rows[0] // Return the deleted property data
+            data: result.rows[0]
         });
 
     } catch (error) {
         console.error(error);
-        // Check for foreign key constraint violations
-        if (error.code === '23503') {
-            return res.status(409).json({
-                success: false,
-                error: 'Cannot delete property due to existing references'
-            });
-        }
         res.status(500).json({ success: false, error: 'Database error' });
     }
 });
