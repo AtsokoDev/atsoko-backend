@@ -188,52 +188,96 @@ const canAccessProperty = (user, property) => {
 };
 
 /**
- * Check if user can modify a property
- * - Admin can modify all properties
- * - Agent can only modify their team's UNPUBLISHED properties directly
- * - For published properties, agents must create an edit request
+ * Check if user can modify a property directly
+ * Uses publication_status + moderation_status
+ *
+ * - Admin can modify all properties (any status)
+ * - Agent can modify their team's properties when:
+ *     - Draft + moderation = none or rejected_add → editable
+ *     - Unpublished + moderation = none → editable
+ *     - Published → must use Request Edit (returns false)
+ *     - Any pending moderation → locked (returns false)
  */
 const canModifyProperty = (user, property) => {
     if (!user) return false;
     if (user.role === 'admin') return true;
     if (user.role === 'agent') {
-        // Agent can only modify their team's unpublished properties
-        return property.agent_team === user.team && property.approve_status !== 'published';
+        if (property.agent_team !== user.team) return false;
+
+        const pubStatus = property.publication_status;
+        const modStatus = property.moderation_status || 'none';
+
+        // Published → agent must use Request Edit
+        if (pubStatus === 'published') return false;
+
+        // Locked during pending moderation
+        if (['pending_add', 'pending_edit', 'pending_delete'].includes(modStatus)) return false;
+
+        // Draft/Unpublished with none or rejected → editable
+        if (pubStatus === 'draft' && ['none', 'rejected_add'].includes(modStatus)) return true;
+        if (pubStatus === 'unpublished' && modStatus === 'none') return true;
+
+        return false;
     }
     return false;
 };
 
 /**
- * Check if user can delete a property directly
+ * Check if user can delete a property directly (soft delete)
  * - Admin can delete all properties
- * - Agent can only delete their team's UNPUBLISHED properties directly
- * - For published properties, agents must create a delete request
+ * - Agent can delete their team's Draft or Unpublished properties
+ * - Published properties → must use Request Delete
  */
 const canDeleteProperty = (user, property) => {
     if (!user) return false;
     if (user.role === 'admin') return true;
     if (user.role === 'agent') {
-        // Agent can only delete their team's unpublished properties
-        return property.agent_team === user.team && property.approve_status !== 'published';
+        if (property.agent_team !== user.team) return false;
+
+        const pubStatus = property.publication_status;
+        const modStatus = property.moderation_status || 'none';
+
+        // Published → must use Request Delete
+        if (pubStatus === 'published') return false;
+
+        // Cannot delete during pending moderation
+        if (['pending_add', 'pending_edit', 'pending_delete'].includes(modStatus)) return false;
+
+        // Draft or Unpublished → can delete
+        if (['draft', 'unpublished'].includes(pubStatus)) return true;
+
+        return false;
     }
     return false;
 };
 
 /**
  * Check what actions a user can perform on a property
- * Returns an object with boolean flags for each action
+ * Uses publication_status + moderation_status
  */
 const getPropertyPermissions = (user, property) => {
+    // Resolve status
+    const pubStatus = property.publication_status;
+    const modStatus = property.moderation_status || 'none';
+    const isPublished = pubStatus === 'published';
+    const isDraft = pubStatus === 'draft';
+    const isUnpublished = pubStatus === 'unpublished';
+    const isDeleted = pubStatus === 'deleted';
+    const hasPendingMod = ['pending_add', 'pending_edit', 'pending_delete'].includes(modStatus);
+    const hasRejectedMod = ['rejected_add', 'rejected_edit', 'rejected_delete'].includes(modStatus);
+
     if (!user) {
         return {
-            canView: property.approve_status === 'published',
+            canView: isPublished,
             canEdit: false,
             canDelete: false,
             canRequestEdit: false,
             canRequestDelete: false,
             canPublish: false,
             canUnpublish: false,
-            canChangeWorkflow: false
+            canChangeWorkflow: false,
+            canSubmitForReview: false,
+            canEditPendingVersion: false
         };
     }
 
@@ -244,25 +288,41 @@ const getPropertyPermissions = (user, property) => {
             canDelete: true,
             canRequestEdit: false, // Admin doesn't need to request
             canRequestDelete: false, // Admin doesn't need to request
-            canPublish: property.approve_status !== 'published',
-            canUnpublish: property.approve_status === 'published',
-            canChangeWorkflow: true
+            canPublish: !isPublished && !isDeleted,
+            canUnpublish: isPublished,
+            canChangeWorkflow: true,
+            canSubmitForReview: false,
+            canEditPendingVersion: false,
+            canApprove: hasPendingMod,
+            canReject: hasPendingMod,
+            canRevert: isPublished
         };
     }
 
     if (user.role === 'agent') {
         const isOwnTeam = property.agent_team === user.team;
-        const isPublished = property.approve_status === 'published';
 
         return {
             canView: isOwnTeam,
-            canEdit: isOwnTeam && !isPublished,
-            canDelete: isOwnTeam && !isPublished,
-            canRequestEdit: isOwnTeam && isPublished,
-            canRequestDelete: isOwnTeam && isPublished,
-            canPublish: false, // Agent can never publish
-            canUnpublish: false, // Agent can never unpublish
-            canChangeWorkflow: false // Agent cannot change workflow
+            canEdit: isOwnTeam && !isPublished && !hasPendingMod && !isDeleted,
+            canDelete: isOwnTeam && (isDraft || isUnpublished) && !hasPendingMod,
+            canRequestEdit: isOwnTeam && isPublished && modStatus === 'none',
+            canRequestDelete: isOwnTeam && isPublished && modStatus === 'none',
+            canPublish: false,
+            canUnpublish: false,
+            canChangeWorkflow: false,
+            canSubmitForReview: isOwnTeam && (
+                (isDraft && modStatus === 'none') ||
+                (isDraft && modStatus === 'rejected_add') ||
+                (isUnpublished && modStatus === 'none')
+            ),
+            canEditPendingVersion: isOwnTeam && (
+                modStatus === 'rejected_edit' ||
+                (modStatus === 'pending_edit' && false) // pending = locked
+            ),
+            canApprove: false,
+            canReject: false,
+            canRevert: false
         };
     }
 
@@ -274,23 +334,50 @@ const getPropertyPermissions = (user, property) => {
         canRequestDelete: false,
         canPublish: false,
         canUnpublish: false,
-        canChangeWorkflow: false
+        canChangeWorkflow: false,
+        canSubmitForReview: false,
+        canEditPendingVersion: false
     };
 };
 
 /**
- * Workflow status transitions validation
+ * Moderation status transitions validation (new model)
  * Returns true if the transition is valid
+ *
+ * @param {string} currentModStatus - current moderation_status
+ * @param {string} newModStatus - requested moderation_status
+ * @param {string} userRole - 'admin' | 'agent'
  */
-const isValidWorkflowTransition = (currentStatus, newStatus, userRole) => {
+const isValidModerationTransition = (currentModStatus, newModStatus, userRole) => {
     // Admin can do any transition
     if (userRole === 'admin') return true;
 
-    // Agent can only respond to fix requests (wait_to_fix -> fixed)
+    // Agent transitions:
     if (userRole === 'agent') {
-        return currentStatus === 'wait_to_fix' && newStatus === 'fixed';
+        // rejected_add → pending_add  (resubmit after fix)
+        if (currentModStatus === 'rejected_add' && newModStatus === 'pending_add') return true;
+        // rejected_edit → pending_edit (resubmit after fix)
+        if (currentModStatus === 'rejected_edit' && newModStatus === 'pending_edit') return true;
+        // none → pending_add (submit draft)
+        if (currentModStatus === 'none' && newModStatus === 'pending_add') return true;
+        return false;
     }
 
+    return false;
+};
+
+/**
+ * DEPRECATED — Legacy workflow status transitions validation.
+ * Use isValidModerationTransition instead.
+ * Kept for backward compatibility during transition period.
+ */
+const isValidWorkflowTransition = (currentStatus, newStatus, userRole) => {
+    console.warn('[DEPRECATED] isValidWorkflowTransition called. Use isValidModerationTransition.');
+    if (userRole === 'admin') return true;
+    if (userRole === 'agent') {
+        // Legacy: wait_to_fix -> fixed (maps to rejected_* → pending_*)
+        return currentStatus === 'wait_to_fix' && newStatus === 'fixed';
+    }
     return false;
 };
 
@@ -302,7 +389,8 @@ module.exports = {
     canModifyProperty,
     canDeleteProperty,
     getPropertyPermissions,
-    isValidWorkflowTransition,
+    isValidModerationTransition,
+    isValidWorkflowTransition, // deprecated — kept for backward compat
     removeSecretFields,
     SECRET_FIELDS,
     JWT_SECRET,

@@ -1,5 +1,10 @@
 /**
- * Run Access Control Migration
+ * [LEGACY ARCHIVED] Run Access Control Migration
+ * This migration added legacy workflow_status + approve_status columns.
+ * The new model uses publication_status + moderation_status.
+ * See database/versioning-migration.sql for the current schema.
+ * DO NOT re-run on new deployments.
+ *
  * Usage: node database/run-access-control-migration.js
  */
 

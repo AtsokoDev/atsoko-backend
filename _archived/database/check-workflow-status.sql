@@ -1,3 +1,9 @@
+-- =====================================================
+-- [LEGACY ARCHIVED] Check Workflow Status
+-- This script checks legacy workflow_status/approve_status.
+-- For the new model, query publication_status + moderation_status instead.
+-- =====================================================
+
 -- Check properties with NULL workflow_status
 -- This query helps identify properties that were created before workflow_status was properly set
 

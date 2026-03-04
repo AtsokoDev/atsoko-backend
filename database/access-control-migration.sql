@@ -1,4 +1,12 @@
 -- =====================================================
+-- [LEGACY ARCHIVED] Access Control Migration
+-- This migration added the legacy workflow_status column.
+-- The new model uses publication_status + moderation_status.
+-- See: database/versioning-migration.sql for the current migration.
+-- DO NOT re-run this on new deployments.
+-- =====================================================
+
+-- =====================================================
 -- Access Control Migration
 -- Adds workflow system for property management
 -- =====================================================

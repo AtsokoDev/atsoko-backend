@@ -94,7 +94,7 @@ router.post('/:propertyId', authenticate, authorize(['admin', 'agent']), async (
 
         // Check if property exists and user has access
         const propertyResult = await pool.query(
-            'SELECT id, agent_team, workflow_status FROM properties WHERE id = $1',
+            'SELECT id, agent_team, moderation_status FROM properties WHERE id = $1',
             [propertyId]
         );
 
@@ -144,14 +144,24 @@ router.post('/:propertyId', authenticate, authorize(['admin', 'agent']), async (
             });
         }
 
-        // If agent is responding to a fix request, update workflow_status to 'fixed'
+        // If agent is responding to a fix request, transition moderation status
+        // New model: rejected_add → pending_add, rejected_edit → pending_edit
         let workflowUpdated = false;
-        if (req.user.role === 'agent' && note_type === 'fix_response' && property.workflow_status === 'wait_to_fix') {
-            await pool.query(
-                'UPDATE properties SET workflow_status = $1, updated_at = NOW() WHERE id = $2',
-                ['fixed', propertyId]
-            );
-            workflowUpdated = true;
+        const modStatus = property.moderation_status || 'none';
+        if (req.user.role === 'agent' && note_type === 'fix_response') {
+            if (modStatus === 'rejected_add') {
+                await pool.query(
+                    `UPDATE properties SET moderation_status = 'pending_add', updated_at = NOW() WHERE id = $1`,
+                    [propertyId]
+                );
+                workflowUpdated = true;
+            } else if (modStatus === 'rejected_edit') {
+                await pool.query(
+                    `UPDATE properties SET moderation_status = 'pending_edit', updated_at = NOW() WHERE id = $1`,
+                    [propertyId]
+                );
+                workflowUpdated = true;
+            }
         }
 
         // Insert the note

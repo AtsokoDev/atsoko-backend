@@ -23,6 +23,7 @@ const propertyRequestsRouter = require('./routes/property-requests');
 const propertyNotesRouter = require('./routes/property-notes');
 const propertyWorkflowRouter = require('./routes/property-workflow');
 const noteTypesRouter = require('./routes/note-types');
+const propertyVersionsRouter = require('./routes/property-versions');
 
 app.use('/api/properties', propertiesRouter);
 app.use('/api/stats', statsRouter);
@@ -36,6 +37,7 @@ app.use('/api/property-requests', propertyRequestsRouter);
 app.use('/api/property-notes', propertyNotesRouter);
 app.use('/api/property-workflow', propertyWorkflowRouter);
 app.use('/api/note-types', noteTypesRouter);
+app.use('/api/property-versions', propertyVersionsRouter);
 
 // Serve static images
 app.use('/images', express.static('public/images'));
