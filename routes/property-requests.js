@@ -5,7 +5,9 @@ const { authenticate, authorize } = require('../middleware/auth');
 
 // =====================================================
 // Property Requests API
-// For edit/delete requests from agents to admins
+// For delete requests from agents to admins.
+// NOTE: Edit requests via this endpoint are DEPRECATED.
+//       Use /api/property-versions/:propertyId/request-edit instead.
 // =====================================================
 
 /**
@@ -24,14 +26,16 @@ router.get('/', authenticate, authorize(['admin', 'agent']), async (req, res) =>
                 pr.request_type,
                 pr.status,
                 pr.reason,
-                pr.requested_changes,
                 pr.admin_response,
+                pr.stale_since,
                 pr.created_at,
                 pr.updated_at,
                 pr.processed_at,
                 p.property_id as property_code,
                 p.title as property_title,
                 p.agent_team,
+                p.publication_status as property_publication_status,
+                p.moderation_status as property_moderation_status,
                 u.name as requested_by_name,
                 u.email as requested_by_email,
                 admin_user.name as processed_by_name
@@ -69,7 +73,7 @@ router.get('/', authenticate, authorize(['admin', 'agent']), async (req, res) =>
             paramCount++;
         }
 
-        // Filter by request type
+        // Filter by request type (though edit requests are deprecated)
         if (request_type) {
             query += ` AND pr.request_type = $${paramCount}`;
             countQuery += ` AND pr.request_type = $${paramCount}`;
@@ -110,7 +114,7 @@ router.get('/', authenticate, authorize(['admin', 'agent']), async (req, res) =>
  */
 router.post('/', authenticate, authorize(['agent']), async (req, res) => {
     try {
-        const { property_id, request_type, reason, requested_changes } = req.body;
+        const { property_id, request_type, reason } = req.body;
 
         // Validate required fields
         if (!property_id || !request_type) {
@@ -127,17 +131,25 @@ router.post('/', authenticate, authorize(['agent']), async (req, res) => {
             });
         }
 
-        // For edit requests, requested_changes is required
-        if (request_type === 'edit' && !requested_changes) {
-            return res.status(400).json({
+        // DEPRECATED: edit requests should use /api/property-versions/:propertyId/request-edit
+        if (request_type === 'edit') {
+            console.warn('[DEPRECATED] POST /property-requests with request_type="edit". Use /api/property-versions/:propertyId/request-edit instead.');
+            return res.status(410).json({
                 success: false,
-                error: 'requested_changes is required for edit requests'
+                error: 'Edit requests via this endpoint are deprecated. Use POST /api/property-versions/:propertyId/request-edit to create a version-based edit request.',
+                _deprecated: true,
+                redirect: `/api/property-versions/${property_id}/request-edit`
             });
         }
 
+        const client = await pool.connect();
+
+        try {
         // Check if property exists and agent has access
-        const propertyResult = await pool.query(
-            'SELECT id, property_id, agent_team, approve_status, workflow_status FROM properties WHERE id = $1',
+        const propertyResult = await client.query(
+            `SELECT id, property_id, agent_team,
+                    publication_status, moderation_status
+             FROM properties WHERE id = $1`,
             [property_id]
         );
 
@@ -149,6 +161,8 @@ router.post('/', authenticate, authorize(['agent']), async (req, res) => {
         }
 
         const property = propertyResult.rows[0];
+        const pubStatus = property.publication_status || 'draft';
+        const modStatus = property.moderation_status || 'none';
 
         // Agent can only request for their team's properties
         if (property.agent_team !== req.user.team) {
@@ -159,39 +173,71 @@ router.post('/', authenticate, authorize(['agent']), async (req, res) => {
         }
 
         // Only allow requests for published properties
-        // (Unpublished properties can be edited/deleted directly)
-        if (property.approve_status !== 'published') {
+        // (Draft/unpublished properties can be edited/deleted directly)
+        if (pubStatus !== 'published') {
             return res.status(400).json({
                 success: false,
-                error: 'You can edit/delete unpublished properties directly. Requests are only needed for published properties.'
+                error: 'You can edit/delete non-published properties directly. Requests are only needed for published properties.'
+            });
+        }
+
+        // Check if there's any pending moderation already
+        if (modStatus !== 'none') {
+            return res.status(400).json({
+                success: false,
+                error: `This property already has a pending moderation (${modStatus}). Wait for it to be processed first.`
             });
         }
 
         // Check if there's already a pending request of the same type
-        const existingRequest = await pool.query(
-            'SELECT id FROM property_requests WHERE property_id = $1 AND request_type = $2 AND status = $3',
-            [property_id, request_type, 'pending']
+        const existingRequest = await client.query(
+            'SELECT id, request_type FROM property_requests WHERE property_id = $1 AND status = $2',
+            [property_id, 'pending']
         );
 
         if (existingRequest.rows.length > 0) {
+            const existing = existingRequest.rows[0];
             return res.status(400).json({
                 success: false,
-                error: `There is already a pending ${request_type} request for this property`
+                error: `There is already a pending ${existing.request_type} request for this property`
             });
         }
 
-        // Create the request
-        const result = await pool.query(
+        await client.query('BEGIN');
+
+        // Create a snapshot of live data at request time
+        const snapshotResult = await client.query(
+            `SELECT type, status, labels, province, district, sub_district,
+                    location, price, price_postfix, price_alternative, size, size_prefix,
+                    terms_conditions, warehouse_length, electricity_system, clear_height,
+                    features, floor_load, land_size, land_postfix, remarks, images
+             FROM properties WHERE id = $1`,
+            [property_id]
+        );
+        const liveSnapshot = snapshotResult.rows[0] || null;
+
+        // Create the request with live snapshot
+        const result = await client.query(
             `INSERT INTO property_requests 
-            (property_id, request_type, status, requested_by, reason, requested_changes)
+            (property_id, request_type, status, requested_by, reason, live_snapshot_at_request)
             VALUES ($1, $2, 'pending', $3, $4, $5)
             RETURNING *`,
-            [property_id, request_type, req.user.id, reason, requested_changes ? JSON.stringify(requested_changes) : null]
+            [property_id, request_type, req.user.id, reason,
+             liveSnapshot ? JSON.stringify(liveSnapshot) : null]
+        );
+
+        // Update property moderation_status
+        const newModStatus = request_type === 'delete' ? 'pending_delete' : 'pending_edit';
+        await client.query(
+            `UPDATE properties 
+             SET moderation_status = $1, updated_at = NOW()
+             WHERE id = $2`,
+            [newModStatus, property_id]
         );
 
         // Create a note for this request
         if (reason) {
-            await pool.query(
+            await client.query(
                 `INSERT INTO property_notes 
                 (property_id, request_id, author_id, note_type, content)
                 VALUES ($1, $2, $3, $4, $5)`,
@@ -201,11 +247,26 @@ router.post('/', authenticate, authorize(['agent']), async (req, res) => {
             );
         }
 
+        // Record in workflow history (use new model fields)
+        await client.query(
+            `INSERT INTO workflow_history 
+             (property_id, previous_approval_status, new_approval_status, changed_by, reason)
+             VALUES ($1, $2, $2, $3, $4)`,
+            [property_id, property.publication_status || 'draft', req.user.id,
+             `Agent created ${request_type} request. Reason: ${reason || 'N/A'}`]
+        );
+
+        await client.query('COMMIT');
+
         res.status(201).json({
             success: true,
             message: `${request_type} request created successfully`,
             data: result.rows[0]
         });
+
+        } finally {
+            client.release();
+        }
     } catch (error) {
         console.error('[POST /property-requests] Error:', error);
         res.status(500).json({ success: false, error: 'Database error' });
@@ -234,7 +295,7 @@ router.put('/:id/process', authenticate, authorize(['admin']), async (req, res) 
 
         // Get the request
         const requestResult = await client.query(
-            `SELECT pr.*, p.approve_status, p.workflow_status, p.agent_team
+            `SELECT pr.*, p.publication_status, p.moderation_status, p.agent_team
              FROM property_requests pr
              JOIN properties p ON pr.property_id = p.id
              WHERE pr.id = $1`,
@@ -272,9 +333,21 @@ router.put('/:id/process', authenticate, authorize(['admin']), async (req, res) 
         // If approved, perform the action
         if (action === 'approve') {
             if (request.request_type === 'delete') {
-                // Soft delete: set approve_status to 'deleted' instead of actually deleting
+                // Soft delete: set publication_status to 'deleted'
                 await client.query(
-                    `UPDATE properties SET approve_status = 'deleted', updated_at = NOW() WHERE id = $1`,
+                    `UPDATE properties 
+                     SET publication_status = 'deleted', moderation_status = 'none',
+                         deleted_at = NOW(), deleted_by = $2,
+                         updated_at = NOW()
+                     WHERE id = $1`,
+                    [request.property_id, req.user.id]
+                );
+
+                // Discard any pending versions
+                await client.query(
+                    `UPDATE property_versions 
+                     SET status = 'discarded', admin_note = 'Property deleted via approved request', updated_at = NOW()
+                     WHERE property_id = $1 AND status IN ('draft', 'pending')`,
                     [request.property_id]
                 );
 
@@ -283,60 +356,31 @@ router.put('/:id/process', authenticate, authorize(['admin']), async (req, res) 
                     `INSERT INTO workflow_history 
                      (property_id, previous_approval_status, new_approval_status, changed_by, reason)
                      VALUES ($1, $2, 'deleted', $3, $4)`,
-                    [request.property_id, request.approve_status, req.user.id,
+                    [request.property_id, request.publication_status || 'published', req.user.id,
                     `Delete request approved. Reason: ${admin_response || 'N/A'}`]
                 );
-            } else if (request.request_type === 'edit') {
-                // Apply the requested changes
-                const changes = request.requested_changes;
-                if (changes && typeof changes === 'object') {
-                    const setClauses = [];
-                    const params = [];
-                    let idx = 1;
-
-                    // Allowed fields for edit requests
-                    const allowedFields = [
-                        'title', 'type', 'status', 'labels', 'province', 'district', 'sub_district',
-                        'location', 'price', 'price_postfix', 'price_alternative', 'size', 'size_prefix',
-                        'terms_conditions', 'warehouse_length', 'electricity_system', 'clear_height',
-                        'features', 'floor_load', 'land_size', 'land_postfix', 'remarks', 'images'
-                    ];
-
-                    Object.entries(changes).forEach(([field, value]) => {
-                        if (allowedFields.includes(field)) {
-                            setClauses.push(`${field} = $${idx}`);
-                            params.push(value);
-                            idx++;
-                        }
-                    });
-
-                    if (setClauses.length > 0) {
-                        setClauses.push(`updated_at = NOW()`);
-                        params.push(request.property_id);
-
-                        await client.query(
-                            `UPDATE properties SET ${setClauses.join(', ')} WHERE id = $${idx}`,
-                            params
-                        );
-                    }
-                }
-
-                // Record in workflow history
-                await client.query(
-                    `INSERT INTO workflow_history 
-                     (property_id, changed_by, reason)
-                     VALUES ($1, $2, $3)`,
-                    [request.property_id, req.user.id,
-                    `Edit request approved. Changes applied. Reason: ${admin_response || 'N/A'}`]
-                );
             }
+            // NOTE: edit request processing removed — edit requests are deprecated.
+            // If an old pending edit request exists, it will be marked approved but
+            // no changes are applied. Use property-versions for edit approvals.
         }
 
         // approve_unpublish: mark request approved but unpublish the listing instead of deleting
         if (action === 'approve_unpublish') {
-            // Set property back to pending (unpublished) — data preserved, admin can restore later
+            // Set property to unpublished — data preserved, admin can restore later
             await client.query(
-                `UPDATE properties SET approve_status = 'pending', workflow_status = 'pending', updated_at = NOW() WHERE id = $1`,
+                `UPDATE properties 
+                 SET publication_status = 'unpublished', moderation_status = 'none',
+                     updated_at = NOW()
+                 WHERE id = $1`,
+                [request.property_id]
+            );
+
+            // Discard any pending versions since property is unpublished
+            await client.query(
+                `UPDATE property_versions 
+                 SET status = 'discarded', admin_note = 'Property unpublished via approved request', updated_at = NOW()
+                 WHERE property_id = $1 AND status IN ('draft', 'pending')`,
                 [request.property_id]
             );
 
@@ -345,7 +389,7 @@ router.put('/:id/process', authenticate, authorize(['admin']), async (req, res) 
                 `INSERT INTO workflow_history 
                  (property_id, previous_approval_status, new_approval_status, changed_by, reason)
                  VALUES ($1, $2, 'pending', $3, $4)`,
-                [request.property_id, request.approve_status, req.user.id,
+                [request.property_id, request.publication_status || 'published', req.user.id,
                 `Delete request approved as unpublish. Reason: ${admin_response || 'N/A'}`]
             );
         }
@@ -359,6 +403,24 @@ router.put('/:id/process', authenticate, authorize(['admin']), async (req, res) 
                 [request.property_id, id, req.user.id,
                 action === 'reject' ? 'rejection' : 'approval',
                     admin_response]
+            );
+        }
+
+        // If rejected, update moderation_status to rejected_* so agent can revise
+        if (action === 'reject') {
+            const rejectedModStatus = request.request_type === 'delete' ? 'rejected_delete' : 'rejected_edit';
+            await client.query(
+                `UPDATE properties SET moderation_status = $1, updated_at = NOW() WHERE id = $2`,
+                [rejectedModStatus, request.property_id]
+            );
+
+            // Record in workflow history
+            await client.query(
+                `INSERT INTO workflow_history 
+                 (property_id, changed_by, reason)
+                 VALUES ($1, $2, $3)`,
+                [request.property_id, req.user.id,
+                `${request.request_type} request rejected. Reason: ${admin_response || 'N/A'}`]
             );
         }
 
@@ -396,8 +458,8 @@ router.get('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
                 p.property_id as property_code,
                 p.title as property_title,
                 p.agent_team,
-                p.approve_status as property_approve_status,
-                p.workflow_status as property_workflow_status,
+                p.publication_status as property_publication_status,
+                p.moderation_status as property_moderation_status,
                 u.name as requested_by_name,
                 u.email as requested_by_email,
                 admin_user.name as processed_by_name

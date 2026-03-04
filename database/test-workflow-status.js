@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 
 /**
+ * [LEGACY ARCHIVED] Test script for legacy workflow_status.
+ * The new model uses publication_status + moderation_status.
+ * This script is kept for reference only — do not use for new tests.
+ */
+
+/**
  * Test script to verify workflow_status is properly set when creating properties
  * 
  * This script tests:
