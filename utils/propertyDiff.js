@@ -182,6 +182,10 @@ const buildApplyVersionQuery = (versionData, startIdx = 1) => {
 
     for (const field of applyableFields) {
         if (field in versionData) {
+            // Skip empty building_type to avoid overwriting valid value with empty
+            if (field === 'building_type' && (versionData[field] === '' || versionData[field] === null)) {
+                continue;
+            }
             setClauses.push(`"${field}" = $${idx}`);
             params.push(versionData[field]);
             idx++;

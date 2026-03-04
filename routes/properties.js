@@ -46,9 +46,23 @@ const normalizeKeyword = (value) => {
 
 const ALLOWED_BUILDING_TYPES = ['S', 'C', 'W'];
 
+// Map full-text building type labels to codes
+const BUILDING_TYPE_MAP = {
+    'STANDALONE WAREHOUSE / FACTORY (OWN LAND & PRIVATE FENCE)': 'S',
+    'STANDALONE': 'S',
+    'DETACHED BUILDING IN SHARED COMPOUND': 'C',
+    'COMPLEX / CLUSTER': 'C',
+    'COMPLEX': 'C',
+    'CLUSTER': 'C',
+    'WAREHOUSE / FACTORY UNIT (SHARED WALL)': 'W',
+    'WITHIN INDUSTRIAL ESTATE': 'W',
+};
+
 const normalizeBuildingType = (value) => {
     if (typeof value !== 'string') return '';
-    return value.trim().toUpperCase();
+    const trimmed = value.trim().toUpperCase();
+    // Return mapped code if full-text, otherwise return as-is
+    return BUILDING_TYPE_MAP[trimmed] || trimmed;
 };
 
 /**
@@ -1261,7 +1275,7 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
         }
 
         data.building_type = normalizeBuildingType(data.building_type);
-        if (!ALLOWED_BUILDING_TYPES.includes(data.building_type)) {
+        if (data.building_type && !ALLOWED_BUILDING_TYPES.includes(data.building_type)) {
             return res.status(400).json({
                 success: false,
                 error: `Invalid building_type. Allowed values: ${ALLOWED_BUILDING_TYPES.join(', ')}`
@@ -1759,7 +1773,12 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
 
         if (Object.prototype.hasOwnProperty.call(data, 'building_type')) {
             data.building_type = normalizeBuildingType(data.building_type);
-            if (!ALLOWED_BUILDING_TYPES.includes(data.building_type)) {
+            if (!data.building_type) {
+                // Empty building_type — remove from update to avoid overwriting existing value
+                delete data.building_type;
+                const idx = fieldsToUpdate.indexOf('building_type');
+                if (idx > -1) fieldsToUpdate.splice(idx, 1);
+            } else if (!ALLOWED_BUILDING_TYPES.includes(data.building_type)) {
                 return res.status(400).json({
                     success: false,
                     error: `Invalid building_type. Allowed values: ${ALLOWED_BUILDING_TYPES.join(', ')}`
@@ -2154,6 +2173,156 @@ router.delete('/:id', authenticate, authorize(['admin', 'agent']), async (req, r
     } catch (error) {
         console.error(error);
         res.status(500).json({ success: false, error: 'Database error' });
+    }
+});
+
+// PUT /api/properties/:id/restore
+// Admin only — restores a soft-deleted property back to draft status
+router.put('/:id/restore', authenticate, authorize(['admin']), async (req, res) => {
+    try {
+        const id = req.params.id;
+
+        let selectQuery = 'SELECT * FROM properties WHERE ';
+        let selectParams = [];
+        if (/^\d+$/.test(id)) {
+            selectQuery += 'id = $1';
+            selectParams = [parseInt(id)];
+        } else {
+            selectQuery += 'property_id = $1';
+            selectParams = [id];
+        }
+
+        const propertyResult = await pool.query(selectQuery, selectParams);
+        if (propertyResult.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Property not found' });
+        }
+
+        const property = propertyResult.rows[0];
+
+        if (property.publication_status !== 'deleted') {
+            return res.status(400).json({
+                success: false,
+                error: 'Only deleted properties can be restored'
+            });
+        }
+
+        // Restore to draft status
+        const result = await pool.query(
+            `UPDATE properties 
+             SET publication_status = 'draft', moderation_status = 'none',
+                 deleted_at = NULL, deleted_by = NULL,
+                 updated_at = NOW()
+             WHERE id = $1 RETURNING *`,
+            [property.id]
+        );
+
+        // Record in workflow history
+        await pool.query(
+            `INSERT INTO workflow_history 
+             (property_id, previous_approval_status, new_approval_status, changed_by, reason)
+             VALUES ($1, 'deleted', 'draft', $2, 'Property restored from trash')`,
+            [property.id, req.user.id]
+        );
+
+        console.log(`[RESTORE] Property ${property.property_id} (id=${property.id}) restored by user ${req.user.id}`);
+
+        res.json({
+            success: true,
+            message: `Property ${property.property_id} restored successfully`,
+            data: result.rows[0]
+        });
+
+    } catch (error) {
+        console.error('[PUT /properties/:id/restore] Error:', error);
+        res.status(500).json({ success: false, error: 'Database error' });
+    }
+});
+
+// DELETE /api/properties/:id/permanent
+// Admin only — permanently removes a soft-deleted property from the database
+router.delete('/:id/permanent', authenticate, authorize(['admin']), async (req, res) => {
+    const client = await pool.connect();
+
+    try {
+        const id = req.params.id;
+
+        // Find the property (must already be soft-deleted)
+        let selectQuery = 'SELECT * FROM properties WHERE ';
+        let selectParams = [];
+        if (/^\d+$/.test(id)) {
+            selectQuery += 'id = $1';
+            selectParams = [parseInt(id)];
+        } else {
+            selectQuery += 'property_id = $1';
+            selectParams = [id];
+        }
+
+        const propertyResult = await client.query(selectQuery, selectParams);
+        if (propertyResult.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Property not found' });
+        }
+
+        const property = propertyResult.rows[0];
+
+        // Only allow permanent delete on already soft-deleted properties
+        if (property.publication_status !== 'deleted') {
+            return res.status(400).json({
+                success: false,
+                error: 'Only soft-deleted properties can be permanently deleted. Delete the property first.'
+            });
+        }
+
+        await client.query('BEGIN');
+
+        // 1. Delete related records
+        await client.query('DELETE FROM property_notes WHERE property_id = $1', [property.id]);
+        await client.query('DELETE FROM property_versions WHERE property_id = $1', [property.id]);
+        await client.query('DELETE FROM property_requests WHERE property_id = $1', [property.id]);
+        await client.query('DELETE FROM workflow_history WHERE property_id = $1', [property.id]);
+
+        // 2. Delete the property row
+        await client.query('DELETE FROM properties WHERE id = $1', [property.id]);
+
+        // 3. Delete image files from disk
+        let images = property.images || [];
+        if (typeof images === 'string') {
+            try { images = JSON.parse(images); } catch { images = []; }
+        }
+        if (!Array.isArray(images)) images = [];
+
+        const uploadDir = path.join(__dirname, '../public/images');
+        let deletedFiles = 0;
+        for (const filename of images) {
+            try {
+                const filePath = path.join(uploadDir, filename);
+                await fs.unlink(filePath);
+                deletedFiles++;
+            } catch (err) {
+                // File might not exist, continue
+                console.warn(`[PERMANENT DELETE] Could not delete image: ${filename}`, err.message);
+            }
+        }
+
+        await client.query('COMMIT');
+
+        console.log(`[PERMANENT DELETE] Property ${property.property_id} (id=${property.id}) permanently deleted. ${deletedFiles}/${images.length} images removed.`);
+
+        res.json({
+            success: true,
+            message: `Property ${property.property_id} permanently deleted`,
+            data: {
+                id: property.id,
+                property_id: property.property_id,
+                images_deleted: deletedFiles
+            }
+        });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('[DELETE /properties/:id/permanent] Error:', error);
+        res.status(500).json({ success: false, error: 'Database error' });
+    } finally {
+        client.release();
     }
 });
 
