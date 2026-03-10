@@ -182,7 +182,8 @@ router.post('/', authenticate, authorize(['agent']), async (req, res) => {
         }
 
         // Check if there's any pending moderation already
-        if (modStatus !== 'none') {
+        // Allow 'rejected_delete' to enable agents to resend after rejection
+        if (modStatus !== 'none' && modStatus !== 'rejected_delete') {
             return res.status(400).json({
                 success: false,
                 error: `This property already has a pending moderation (${modStatus}). Wait for it to be processed first.`
@@ -204,6 +205,16 @@ router.post('/', authenticate, authorize(['agent']), async (req, res) => {
         }
 
         await client.query('BEGIN');
+
+        // Archive old rejected request as 'superseded' if creating new delete request
+        if (request_type === 'delete' && modStatus === 'rejected_delete') {
+            await client.query(
+                `UPDATE property_requests 
+                 SET status = 'superseded', updated_at = NOW()
+                 WHERE property_id = $1 AND request_type = 'delete' AND status = 'rejected'`,
+                [property_id]
+            );
+        }
 
         // Create a snapshot of live data at request time
         const snapshotResult = await client.query(
