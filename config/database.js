@@ -6,6 +6,12 @@ const pool = new Pool({
   database: process.env.DB_NAME || 'demo_db',
   user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres',
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
+  allowExitOnIdle: false,
+  statement_timeout: 30000,
+  query_timeout: 30000,
 });
 
 pool.on('connect', () => {
