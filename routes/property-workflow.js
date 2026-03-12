@@ -397,6 +397,12 @@ router.put('/:id/submit', authenticate, authorize(['agent', 'admin']), async (re
         const { id } = req.params;
         const { note } = req.body;
 
+        console.log(`[SUBMIT] ========================================`);
+        console.log(`[SUBMIT] User: ${req.user.id} (${req.user.role}) - Team: ${req.user.team}`);
+        console.log(`[SUBMIT] Property ID: ${id}`);
+        console.log(`[SUBMIT] Timestamp: ${new Date().toISOString()}`);
+        console.log(`[SUBMIT] ========================================`);
+
         await client.query('BEGIN');
 
         // Get current property
@@ -447,9 +453,12 @@ router.put('/:id/submit', authenticate, authorize(['agent', 'admin']), async (re
         // Check moderation status - only none or rejected_add can be submitted
         if (!['none', 'rejected_add'].includes(modStatus)) {
             await client.query('ROLLBACK');
+            console.log(`[SUBMIT] ❌ REJECTED - Property already in moderation: ${modStatus}`);
             return res.status(400).json({
                 success: false,
-                error: `Cannot submit. Property moderation status is '${modStatus}'. Only properties with 'none' or 'rejected_add' moderation can be submitted.`
+                error: `Cannot submit. Property moderation status is '${modStatus}'. Only properties with 'none' or 'rejected_add' moderation can be submitted.`,
+                current_status: modStatus,
+                already_submitted: modStatus === 'pending_add'
             });
         }
 
@@ -461,6 +470,8 @@ router.put('/:id/submit', authenticate, authorize(['agent', 'admin']), async (re
              WHERE id = $1`,
             [id]
         );
+
+        console.log(`[SUBMIT] ✅ Updated property ${property.property_id} (id: ${id}) - moderation_status: ${modStatus} → pending_add`);
 
         // Record in workflow history
         await client.query(
@@ -499,9 +510,13 @@ router.put('/:id/submit', authenticate, authorize(['agent', 'admin']), async (re
                 [id, nextVersion, JSON.stringify(versionData), req.user.id, req.user.role,
                  note || 'Submitted for review']
             );
+
+            console.log(`[SUBMIT] ✅ Created version snapshot v${nextVersion} for property ${property.property_id}`);
+            console.log(`[SUBMIT] 📸 Snapshot includes ${versionData.images?.length || 0} images`);
         }
 
         await client.query('COMMIT');
+        console.log(`[SUBMIT] ✅ Transaction committed successfully - NO NEW PROPERTY CREATED`);
 
         res.json({
             success: true,
