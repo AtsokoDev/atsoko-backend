@@ -1525,7 +1525,11 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
             const statusCode = getStatusCode(data.status);
             const propertyId = `AT${nextNumber}${statusCode}`;
 
+            console.log(`[CREATE PROPERTY] ========================================`);
+            console.log(`[CREATE PROPERTY] User: ${req.user.id} (${req.user.role}) - Team: ${req.user.team || 'N/A'}`);
             console.log(`[CREATE PROPERTY] Generating property_id: ${propertyId} (number: ${nextNumber}, status: ${statusCode})`);
+            console.log(`[CREATE PROPERTY] Timestamp: ${new Date().toISOString()}`);
+            console.log(`[CREATE PROPERTY] ========================================`);
 
             // Step 3: Generate multi-language titles BEFORE insert (title is NOT NULL)
             let generatedTitles = { title_en: null, title_th: null, title_zh: null };

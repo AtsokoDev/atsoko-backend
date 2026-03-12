@@ -17,6 +17,15 @@ image-mapping.json
 # Ignore database dumps
 /database-dump
 
+# Backups (created by backup-db.sh)
+backups/
+*.sql
+*.sql.gz
+
+# Uploads (user uploaded files - different per environment)
+uploads/*
+!uploads/.gitkeep
+
 # Deployment
 logs/
 *.log.*
