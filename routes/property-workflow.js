@@ -3,6 +3,7 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticate, authorize } = require('../middleware/auth');
 const { createSnapshot } = require('../utils/propertyDiff');
+const { broadcastEvent } = require('../services/sse');
 
 // =====================================================
 // Property Workflow API
@@ -150,6 +151,12 @@ router.put('/:id/status', authenticate, authorize(['admin']), async (req, res) =
         }
         await client.query('COMMIT');
 
+        broadcastEvent('property:status_changed', {
+            propertyId: id,
+            property_id: property.property_id,
+            moderation_status: newModStatus
+        });
+
         res.json({
             success: true,
             message: `Moderation status updated to ${newModStatus}`,
@@ -260,9 +267,14 @@ router.put('/:id/publish', authenticate, authorize(['admin']), async (req, res) 
 
         await client.query('COMMIT');
 
+        broadcastEvent('property:published', {
+            propertyId: id,
+            property_id: property.property_id,
+            publication_status: 'published',
+            moderation_status: 'none'
+        });
+
         res.json({
-            success: true,
-            message: 'Property published successfully',
             data: {
                 property_id: property.property_id,
                 publication_status: 'published',
@@ -366,6 +378,13 @@ router.put('/:id/unpublish', authenticate, authorize(['admin']), async (req, res
         }
 
         await client.query('COMMIT');
+
+        broadcastEvent('property:unpublished', {
+            propertyId: id,
+            property_id: property.property_id,
+            publication_status: 'unpublished',
+            moderation_status: 'none'
+        });
 
         res.json({
             success: true,
@@ -508,7 +527,7 @@ router.put('/:id/submit', authenticate, authorize(['agent', 'admin']), async (re
                  (property_id, version_number, version_data, status, created_by, created_by_role, reason)
                  VALUES ($1, $2, $3, 'pending', $4, $5, $6)`,
                 [id, nextVersion, JSON.stringify(versionData), req.user.id, req.user.role,
-                 note || 'Submitted for review']
+                    note || 'Submitted for review']
             );
 
             console.log(`[SUBMIT] ✅ Created version snapshot v${nextVersion} for property ${property.property_id}`);
@@ -517,6 +536,13 @@ router.put('/:id/submit', authenticate, authorize(['agent', 'admin']), async (re
 
         await client.query('COMMIT');
         console.log(`[SUBMIT] ✅ Transaction committed successfully - NO NEW PROPERTY CREATED`);
+
+        broadcastEvent('property:submitted', {
+            propertyId: id,
+            property_id: property.property_id,
+            publication_status: pubStatus,
+            moderation_status: 'pending_add'
+        });
 
         res.json({
             success: true,

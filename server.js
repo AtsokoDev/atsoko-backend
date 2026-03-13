@@ -2,6 +2,9 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
+const { addClient, removeClient } = require('./services/sse');
+const { authenticate } = require('./middleware/auth');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -38,6 +41,41 @@ app.use('/api/property-notes', propertyNotesRouter);
 app.use('/api/property-workflow', propertyWorkflowRouter);
 app.use('/api/note-types', noteTypesRouter);
 app.use('/api/property-versions', propertyVersionsRouter);
+
+// ─── Server-Sent Events endpoint ────────────────────────────────────────────
+// EventSource cannot set custom headers, so we also accept token via ?token=
+// The authenticate middleware already reads from Authorization header;
+// here we normalise the query-param token into the header before calling it.
+app.get('/api/events', (req, res, next) => {
+  // Inject token from query param into header so authenticate() can read it
+  if (req.query.token && !req.headers.authorization) {
+    req.headers.authorization = `Bearer ${req.query.token}`;
+  }
+  next();
+}, authenticate, (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering
+  res.flushHeaders();
+
+  const clientId = `${req.user.id}_${Date.now()}`;
+  addClient(clientId, res);
+
+  // Send initial handshake so the client knows the connection is live
+  res.write(`event: connected\ndata: ${JSON.stringify({ clientId })}\n\n`);
+
+  // Heartbeat every 25 s to keep the connection alive through proxies/load-balancers
+  const heartbeat = setInterval(() => {
+    try { res.write(': heartbeat\n\n'); } catch { /* client gone */ }
+  }, 25000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    removeClient(clientId);
+  });
+});
+// ────────────────────────────────────────────────────────────────────────────
 
 // Serve static images
 app.use('/images', express.static('public/images'));
