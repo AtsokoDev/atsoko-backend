@@ -4,6 +4,7 @@ const pool = require('../config/database');
 const { authenticate, authorize } = require('../middleware/auth');
 const { computeDiff, createSnapshot, buildApplyVersionQuery } = require('../utils/propertyDiff');
 const { generateTitles } = require('../services/titleGenerator');
+const { broadcastEvent } = require('../services/sse');
 
 // =====================================================
 // Property Versions API
@@ -221,6 +222,12 @@ router.post('/:propertyId/request-edit', authenticate, authorize(['agent']), asy
 
         await client.query('COMMIT');
 
+        broadcastEvent('property:updated', {
+            propertyId: propertyId,
+            action: 'request_edit',
+            moderation_status: 'pending_edit'
+        });
+
         res.status(201).json({
             success: true,
             message: 'Edit request created. You can now edit the pending version.',
@@ -373,9 +380,13 @@ router.put('/version/:versionId/submit', authenticate, authorize(['agent']), asy
 
         await client.query('COMMIT');
 
+        broadcastEvent('property:updated', {
+            propertyId: version.property_id,
+            action: 'version_submitted',
+            moderation_status: newModStatus
+        });
+
         res.json({
-            success: true,
-            message: 'Version submitted for review',
             data: { version_id: versionId, moderation_status: newModStatus }
         });
     } catch (error) {
@@ -596,7 +607,7 @@ router.put('/version/:versionId/approve', authenticate, authorize(['admin']), as
               previous_approval_status, new_approval_status, changed_by, reason)
              VALUES ($1, $2, 'none', $3, 'published', $4, $5)`,
             [version.property_id, modStatus, pubStatus, req.user.id,
-                note || `Version ${version.version_number} approved`]
+            note || `Version ${version.version_number} approved`]
         );
 
         // 8. Add approval note
@@ -609,9 +620,15 @@ router.put('/version/:versionId/approve', authenticate, authorize(['admin']), as
 
         await client.query('COMMIT');
 
+        broadcastEvent('property:published', {
+            propertyId: version.property_id,
+            action: 'version_approved',
+            version_number: version.version_number,
+            publication_status: 'published',
+            moderation_status: 'none'
+        });
+
         res.json({
-            success: true,
-            message: `Version ${version.version_number} approved and applied`,
             data: {
                 version_id: versionId,
                 version_number: version.version_number,
@@ -700,7 +717,7 @@ router.put('/version/:versionId/reject', authenticate, authorize(['admin']), asy
                  (property_id, previous_workflow_status, new_workflow_status, changed_by, reason)
                  VALUES ($1, $2, $3, $4, $5)`,
                 [version.property_id, modStatus, rejectedModStatus, req.user.id,
-                    note || 'Returned for revision']
+                note || 'Returned for revision']
             );
 
             // Add rejection note
@@ -715,9 +732,13 @@ router.put('/version/:versionId/reject', authenticate, authorize(['admin']), asy
 
             await client.query('COMMIT');
 
+            broadcastEvent('property:updated', {
+                propertyId: version.property_id,
+                action: 'version_returned',
+                moderation_status: rejectedModStatus
+            });
+
             res.json({
-                success: true,
-                message: 'Version returned for revision',
                 data: { version_id: versionId, moderation_status: rejectedModStatus }
             });
         } else {
@@ -756,7 +777,7 @@ router.put('/version/:versionId/reject', authenticate, authorize(['admin']), asy
                   previous_approval_status, new_approval_status, changed_by, reason)
                  VALUES ($1, $2, 'none', $3, $4, $5, $6)`,
                 [version.property_id, modStatus, pubStatus, newPubStatus, req.user.id,
-                    note || 'Version rejected']
+                note || 'Version rejected']
             );
 
             if (note) {
@@ -770,9 +791,14 @@ router.put('/version/:versionId/reject', authenticate, authorize(['admin']), asy
 
             await client.query('COMMIT');
 
+            broadcastEvent('property:updated', {
+                propertyId: version.property_id,
+                action: 'version_rejected',
+                publication_status: newPubStatus,
+                moderation_status: newModStatus
+            });
+
             res.json({
-                success: true,
-                message: 'Version rejected',
                 data: {
                     version_id: versionId,
                     publication_status: newPubStatus,
@@ -874,7 +900,7 @@ router.put('/version/:versionId/revert', authenticate, authorize(['admin']), asy
              (property_id, changed_by, reason)
              VALUES ($1, $2, $3)`,
             [targetVersion.property_id, req.user.id,
-                `Reverted to version ${targetVersion.version_number}. ${note || ''}`]
+            `Reverted to version ${targetVersion.version_number}. ${note || ''}`]
         );
 
         // 6. Add note
@@ -883,14 +909,18 @@ router.put('/version/:versionId/revert', authenticate, authorize(['admin']), asy
              (property_id, author_id, note_type, content)
              VALUES ($1, $2, 'general', $3)`,
             [targetVersion.property_id, req.user.id,
-                `Property reverted to version ${targetVersion.version_number}`]
+            `Property reverted to version ${targetVersion.version_number}`]
         );
 
         await client.query('COMMIT');
 
+        broadcastEvent('property:updated', {
+            propertyId: targetVersion.property_id,
+            action: 'version_reverted',
+            version_number: targetVersion.version_number
+        });
+
         res.json({
-            success: true,
-            message: `Property reverted to version ${targetVersion.version_number}`,
             data: {
                 new_version: newVersionResult.rows[0],
                 reverted_from_version: targetVersion.version_number
@@ -969,9 +999,13 @@ router.delete('/version/:versionId', authenticate, authorize(['admin', 'agent'])
 
         await client.query('COMMIT');
 
+        broadcastEvent('property:updated', {
+            propertyId: version.property_id,
+            action: 'version_discarded',
+            moderation_status: 'none'
+        });
+
         res.json({
-            success: true,
-            message: 'Draft version discarded',
             data: { property_id: version.property_id, moderation_status: 'none' }
         });
     } catch (error) {
