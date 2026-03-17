@@ -9,6 +9,8 @@
     "dev:admin": "cd admin-panel && npm run dev",
     "dev:all": "concurrently \"npm run dev\" \"npm run dev:admin\"",
     "migrate": "node database/run-migration.js",
+    "migrate:workflow-history": "node database/run-rename-workflow-history.js",
+    "migrate:remove-edit-request-type": "node database/run-remove-edit-request-type.js",
     "create-admin": "node scripts/create-admin.js"
   },
   "keywords": [

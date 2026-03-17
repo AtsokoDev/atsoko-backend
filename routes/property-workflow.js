@@ -139,7 +139,7 @@ router.put('/:id/status', authenticate, authorize(['admin']), async (req, res) =
             [newModStatus, id]
         );
         await client.query(
-            `INSERT INTO workflow_history (property_id, previous_workflow_status, new_workflow_status, changed_by, reason)
+            `INSERT INTO workflow_history (property_id, previous_moderation_status, new_moderation_status, changed_by, reason)
              VALUES ($1, $2, $3, $4, $5)`,
             [id, prevMod, newModStatus, req.user.id, note]
         );
@@ -251,8 +251,8 @@ router.put('/:id/publish', authenticate, authorize(['admin']), async (req, res) 
         // Record in workflow history
         await client.query(
             `INSERT INTO workflow_history 
-             (property_id, previous_workflow_status, new_workflow_status, 
-              previous_approval_status, new_approval_status, changed_by, reason)
+             (property_id, previous_moderation_status, new_moderation_status, 
+              previous_publication_status, new_publication_status, changed_by, reason)
              VALUES ($1, $2, $2, $3, 'published', $4, $5)`,
             [id, property.moderation_status || 'none', pubStatus, req.user.id, note || 'Property published']
         );
@@ -361,8 +361,8 @@ router.put('/:id/unpublish', authenticate, authorize(['admin']), async (req, res
         // Record in workflow history
         await client.query(
             `INSERT INTO workflow_history 
-             (property_id, previous_workflow_status, new_workflow_status, 
-              previous_approval_status, new_approval_status, changed_by, reason)
+             (property_id, previous_moderation_status, new_moderation_status, 
+              previous_publication_status, new_publication_status, changed_by, reason)
              VALUES ($1, $2, 'none', 'published', 'pending', $3, $4)`,
             [id, property.moderation_status || 'none', req.user.id, note || 'Property unpublished']
         );
@@ -495,7 +495,7 @@ router.put('/:id/submit', authenticate, authorize(['agent', 'admin']), async (re
         // Record in workflow history
         await client.query(
             `INSERT INTO workflow_history 
-             (property_id, previous_workflow_status, new_workflow_status, changed_by, reason)
+             (property_id, previous_moderation_status, new_moderation_status, changed_by, reason)
              VALUES ($1, $2, 'pending_add', $3, $4)`,
             [id, property.moderation_status || 'none', req.user.id, note || 'Agent submitted property for review']
         );
