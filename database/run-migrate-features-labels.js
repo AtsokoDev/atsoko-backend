@@ -5,7 +5,6 @@
  * Run: npm run migrate:features-labels-jsonb
  */
 
-require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const pool = require('../config/database');
