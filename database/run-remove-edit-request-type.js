@@ -6,6 +6,48 @@ const fs = require('fs');
 const path = require('path');
 const pool = require('../config/database');
 
+const fallbackSql = `BEGIN;
+
+DELETE FROM property_requests
+WHERE request_type = 'edit';
+
+DO $$
+DECLARE
+    existing_constraint TEXT;
+BEGIN
+    SELECT con.conname
+    INTO existing_constraint
+    FROM pg_constraint con
+    JOIN pg_class rel ON rel.oid = con.conrelid
+    JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+    WHERE nsp.nspname = 'public'
+      AND rel.relname = 'property_requests'
+      AND con.contype = 'c'
+      AND pg_get_constraintdef(con.oid) ILIKE '%request_type%';
+
+    IF existing_constraint IS NOT NULL THEN
+        EXECUTE format('ALTER TABLE property_requests DROP CONSTRAINT %I', existing_constraint);
+    END IF;
+END $$;
+
+ALTER TABLE property_requests
+ADD CONSTRAINT property_requests_request_type_check
+CHECK (request_type = 'delete');
+
+COMMIT;
+`;
+
+function loadMigrationSql() {
+    const sqlPath = path.join(__dirname, 'remove-edit-request-type.sql');
+
+    if (fs.existsSync(sqlPath)) {
+        return fs.readFileSync(sqlPath, 'utf8');
+    }
+
+    console.warn(`⚠️ SQL file not found at ${sqlPath}. Using embedded fallback SQL.`);
+    return fallbackSql;
+}
+
 async function runMigration() {
     const client = await pool.connect();
 
@@ -14,8 +56,7 @@ async function runMigration() {
         console.log('   Removing property_requests edit type');
         console.log('==============================================\n');
 
-        const sqlPath = path.join(__dirname, 'remove-edit-request-type.sql');
-        const sql = fs.readFileSync(sqlPath, 'utf8');
+        const sql = loadMigrationSql();
 
         await client.query(sql);
 

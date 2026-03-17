@@ -20,6 +20,8 @@ image-mapping.json
 # Backups (created by backup-db.sh)
 backups/
 *.sql
+!database/remove-edit-request-type.sql
+!database/rename-workflow-history-columns.sql
 *.sql.gz
 
 # Uploads (user uploaded files - different per environment)
