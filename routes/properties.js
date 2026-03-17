@@ -129,14 +129,11 @@ router.get('/remarks-suggestions', authenticate, async (req, res) => {
             max_size,
             size_min,
             size_max,
-            min_price,
-            max_price,
             price_min,
             price_max,
             features,
             feature,
             labels,
-            zone_type,
             min_height,
             max_height,
             clear_height,
@@ -153,13 +150,6 @@ router.get('/remarks-suggestions', authenticate, async (req, res) => {
                 data: []
             });
         }
-
-        // Use frontend naming if provided, fallback to legacy
-        const effectiveMinSize = size_min || min_size;
-        const effectiveMaxSize = size_max || max_size;
-        const effectiveMinPrice = price_min || min_price;
-        const effectiveMaxPrice = price_max || max_price;
-        const effectiveLabels = labels || zone_type;
 
         const sanitizedQuery = sanitizePattern(q);
 
@@ -281,15 +271,15 @@ router.get('/remarks-suggestions', authenticate, async (req, res) => {
         }
 
         // Size filters
-        if (effectiveMinSize) {
-            const validatedMinSize = validateNumber(effectiveMinSize, 'size_min');
+        if (size_min) {
+            const validatedMinSize = validateNumber(size_min, 'size_min');
             query += ` AND size >= $${paramCount}`;
             params.push(validatedMinSize);
             paramCount++;
         }
 
-        if (effectiveMaxSize) {
-            const validatedMaxSize = validateNumber(effectiveMaxSize, 'size_max');
+        if (size_max) {
+            const validatedMaxSize = validateNumber(size_max, 'size_max');
             query += ` AND size <= $${paramCount}`;
             params.push(validatedMaxSize);
             paramCount++;
@@ -298,15 +288,15 @@ router.get('/remarks-suggestions', authenticate, async (req, res) => {
         // Price filters
         const priceField = status && status.toLowerCase().includes('sale') ? 'price_alternative' : 'price';
 
-        if (effectiveMinPrice) {
-            const validatedMinPrice = validateNumber(effectiveMinPrice, 'price_min');
+        if (price_min) {
+            const validatedMinPrice = validateNumber(price_min, 'price_min');
             query += ` AND ${priceField} >= $${paramCount}`;
             params.push(validatedMinPrice);
             paramCount++;
         }
 
-        if (effectiveMaxPrice) {
-            const validatedMaxPrice = validateNumber(effectiveMaxPrice, 'price_max');
+        if (price_max) {
+            const validatedMaxPrice = validateNumber(price_max, 'price_max');
             query += ` AND ${priceField} <= $${paramCount}`;
             params.push(validatedMaxPrice);
             paramCount++;
@@ -320,9 +310,9 @@ router.get('/remarks-suggestions', authenticate, async (req, res) => {
             paramCount++;
         }
 
-        // Labels / Zone Type filter
-        if (effectiveLabels) {
-            const labelsArray = Array.isArray(effectiveLabels) ? effectiveLabels : effectiveLabels.split(',').map(l => l.trim());
+        // Labels filter
+        if (labels) {
+            const labelsArray = Array.isArray(labels) ? labels : labels.split(',').map(l => l.trim());
             query += ` AND (labels LIKE '[%]' AND labels::jsonb @> $${paramCount}::jsonb)`;
             params.push(JSON.stringify(labelsArray));
             paramCount++;
@@ -574,22 +564,17 @@ router.get('/', optionalAuth, async (req, res) => {
             province,
             district,
             sub_district,      // Subdistrict filter
-            // Size filters - support both naming conventions
-            min_size,          // Area min (legacy)
-            max_size,          // Area max (legacy)
-            size_min,          // Area min (frontend)
-            size_max,          // Area max (frontend)
-            // Price filters - support both naming conventions
-            min_price,         // Price min (legacy)
-            max_price,         // Price max (legacy)
-            price_min,         // Price min (frontend)
-            price_max,         // Price max (frontend)
+            // Size filters
+            size_min,          // Area min
+            size_max,          // Area max
+            // Price filters
+            price_min,         // Price min
+            price_max,         // Price max
             // Feature filters
             features,          // Features array (comma-separated or array)
             feature,           // Single feature filter (frontend)
-            // Label/Zone filters
+            // Label filters
             labels,            // Zone Type (database column name)
-            zone_type,         // Zone Type (frontend name)
             // Height filters
             min_height,        // Clear height min
             max_height,        // Clear height max
@@ -609,13 +594,6 @@ router.get('/', optionalAuth, async (req, res) => {
 
         const effectivePubStatus = publication_status || null;
         const effectiveModStatus = moderation_status || null;
-
-        // Use frontend naming if provided, fallback to legacy
-        const effectiveMinSize = size_min || min_size;
-        const effectiveMaxSize = size_max || max_size;
-        const effectiveMinPrice = price_min || min_price;
-        const effectiveMaxPrice = price_max || max_price;
-        const effectiveLabelsParam = labels || zone_type; // For response object
 
 
         // Validate pagination parameters
@@ -895,9 +873,9 @@ router.get('/', optionalAuth, async (req, res) => {
             }
         }
 
-        // 7. Area (Size) filter - Min (supports both min_size and size_min)
-        if (effectiveMinSize) {
-            const validatedMinSize = validateNumber(effectiveMinSize, 'size_min');
+        // 7. Area (Size) filter - Min
+        if (size_min) {
+            const validatedMinSize = validateNumber(size_min, 'size_min');
             query += ` AND size >= $${paramCount}`;
             countQuery += ` AND size >= $${paramCount}`;
             params.push(validatedMinSize);
@@ -905,9 +883,9 @@ router.get('/', optionalAuth, async (req, res) => {
             paramCount++;
         }
 
-        // 8. Area (Size) filter - Max (supports both max_size and size_max)
-        if (effectiveMaxSize) {
-            const validatedMaxSize = validateNumber(effectiveMaxSize, 'size_max');
+        // 8. Area (Size) filter - Max
+        if (size_max) {
+            const validatedMaxSize = validateNumber(size_max, 'size_max');
             query += ` AND size <= $${paramCount}`;
             countQuery += ` AND size <= $${paramCount}`;
             params.push(validatedMaxSize);
@@ -919,8 +897,8 @@ router.get('/', optionalAuth, async (req, res) => {
         // If status is "sale", use price_alternative, otherwise use price (default for rent)
         const priceField = status && status.toLowerCase().includes('sale') ? 'price_alternative' : 'price';
 
-        if (effectiveMinPrice) {
-            const validatedMinPrice = validateNumber(effectiveMinPrice, 'price_min');
+        if (price_min) {
+            const validatedMinPrice = validateNumber(price_min, 'price_min');
             query += ` AND ${priceField} >= $${paramCount}`;
             countQuery += ` AND ${priceField} >= $${paramCount}`;
             params.push(validatedMinPrice);
@@ -928,8 +906,8 @@ router.get('/', optionalAuth, async (req, res) => {
             paramCount++;
         }
 
-        if (effectiveMaxPrice) {
-            const validatedMaxPrice = validateNumber(effectiveMaxPrice, 'price_max');
+        if (price_max) {
+            const validatedMaxPrice = validateNumber(price_max, 'price_max');
             query += ` AND ${priceField} <= $${paramCount}`;
             countQuery += ` AND ${priceField} <= $${paramCount}`;
             params.push(validatedMaxPrice);
@@ -950,11 +928,10 @@ router.get('/', optionalAuth, async (req, res) => {
             paramCount++;
         }
 
-        // 11. Labels / Zone Type Filter (expects JSON Array, stored as JSON Array string)
-        const effectiveLabels = labels || zone_type;
-        if (effectiveLabels) {
+        // 11. Labels filter (expects JSON Array, stored as JSON Array string)
+        if (labels) {
             // Support both JSON array and comma-separated string
-            const labelsArray = Array.isArray(effectiveLabels) ? effectiveLabels : effectiveLabels.split(',').map(l => l.trim());
+            const labelsArray = Array.isArray(labels) ? labels : labels.split(',').map(l => l.trim());
 
             // Use JSONB contains operator (@>) - same as features
             query += ` AND (labels LIKE '[%]' AND labels::jsonb @> $${paramCount}::jsonb)`;
@@ -1154,14 +1131,13 @@ router.get('/', optionalAuth, async (req, res) => {
                 province,
                 district,
                 sub_district,
-                price_range: { min: effectiveMinPrice, max: effectiveMaxPrice, field: priceField },
-                size_range: { min: effectiveMinSize, max: effectiveMaxSize },
+                price_range: { min: price_min, max: price_max, field: priceField },
+                size_range: { min: size_min, max: size_max },
                 height_range: { min: min_height, max: max_height },
                 features,
                 feature,
                 floor_load,
-                labels: effectiveLabelsParam,
-                zone_type: effectiveLabelsParam
+                labels
             },
             sorting: {
                 sort: validatedSort,
