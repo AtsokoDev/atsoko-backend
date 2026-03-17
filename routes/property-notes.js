@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const { authenticate, authorize } = require('../middleware/auth');
+const { broadcastEvent } = require('../services/sse');
 
 // =====================================================
 // Property Notes API
@@ -94,7 +95,7 @@ router.post('/:propertyId', authenticate, authorize(['admin', 'agent']), async (
 
         // Check if property exists and user has access
         const propertyResult = await pool.query(
-            'SELECT id, agent_team, moderation_status FROM properties WHERE id = $1',
+            'SELECT id, property_id, agent_team, moderation_status FROM properties WHERE id = $1',
             [propertyId]
         );
 
@@ -147,18 +148,33 @@ router.post('/:propertyId', authenticate, authorize(['admin', 'agent']), async (
         // If agent is responding to a fix request, transition moderation status
         // New model: rejected_add → pending_add, rejected_edit → pending_edit
         let workflowUpdated = false;
+        let newModStatus = null;
         const modStatus = property.moderation_status || 'none';
         if (req.user.role === 'agent' && note_type === 'fix_response') {
             if (modStatus === 'rejected_add') {
+                newModStatus = 'pending_add';
                 await pool.query(
-                    `UPDATE properties SET moderation_status = 'pending_add', updated_at = NOW() WHERE id = $1`,
-                    [propertyId]
+                    `UPDATE properties SET moderation_status = $1, updated_at = NOW() WHERE id = $2`,
+                    [newModStatus, propertyId]
+                );
+                // Insert workflow history with explicit record
+                await pool.query(
+                    `INSERT INTO workflow_history (property_id, previous_moderation_status, new_moderation_status, changed_by, reason)
+                     VALUES ($1, $2, $3, $4, $5)`,
+                    [propertyId, modStatus, newModStatus, req.user.id, `Fix response submitted for review`]
                 );
                 workflowUpdated = true;
             } else if (modStatus === 'rejected_edit') {
+                newModStatus = 'pending_edit';
                 await pool.query(
-                    `UPDATE properties SET moderation_status = 'pending_edit', updated_at = NOW() WHERE id = $1`,
-                    [propertyId]
+                    `UPDATE properties SET moderation_status = $1, updated_at = NOW() WHERE id = $2`,
+                    [newModStatus, propertyId]
+                );
+                // Insert workflow history with explicit record
+                await pool.query(
+                    `INSERT INTO workflow_history (property_id, previous_moderation_status, new_moderation_status, changed_by, reason)
+                     VALUES ($1, $2, $3, $4, $5)`,
+                    [propertyId, modStatus, newModStatus, req.user.id, `Fix response submitted for review`]
                 );
                 workflowUpdated = true;
             }
@@ -179,6 +195,23 @@ router.post('/:propertyId', authenticate, authorize(['admin', 'agent']), async (
             author_name: req.user.name,
             author_role: req.user.role
         };
+
+        // Emit SSE event if workflow was updated due to fix_response
+        if (workflowUpdated && newModStatus) {
+            broadcastEvent('note:fix_response_submitted', {
+                propertyId: propertyId,
+                property_id: property.property_id,
+                note_type: note_type,
+                previous_moderation_status: modStatus,
+                new_moderation_status: newModStatus
+            });
+            // Also emit the general status_changed event for backward compatibility
+            broadcastEvent('property:status_changed', {
+                propertyId: propertyId,
+                property_id: property.property_id,
+                moderation_status: newModStatus
+            });
+        }
 
         res.status(201).json({
             success: true,
