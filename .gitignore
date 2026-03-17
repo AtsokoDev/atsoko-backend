@@ -35,3 +35,12 @@ logs/
 docker-compose.override.yml
 
 git-merge.sh
+
+# Generated git/report exports
+atsoko-backend.csv
+commits.csv
+commits_detailed.csv
+daily-summary.csv
+git-daily-summary.csv
+git-detailed-commits.csv
+git-report.md

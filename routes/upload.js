@@ -4,6 +4,7 @@ const sharp = require('sharp');
 const fs = require('fs').promises;
 const path = require('path');
 const pool = require('../config/database');
+const { authenticate, authorize } = require('../middleware/auth');
 const { upload, handleUploadError } = require('../middleware/upload');
 
 // Watermark configuration
@@ -92,8 +93,7 @@ const ensureUploadDir = async () => {
 };
 
 // POST /api/upload/image - Upload single image
-// TODO: Add authentication middleware to protect this route
-router.post('/image', upload.single('image'), handleUploadError, async (req, res) => {
+router.post('/image', authenticate, authorize(['admin', 'agent']), upload.single('image'), handleUploadError, async (req, res) => {
     try {
         const { property_id } = req.body;
 
@@ -186,8 +186,7 @@ router.post('/image', upload.single('image'), handleUploadError, async (req, res
 });
 
 // POST /api/upload/images - Upload multiple images
-// TODO: Add authentication middleware to protect this route
-router.post('/images', upload.array('images', 20), handleUploadError, async (req, res) => {
+router.post('/images', authenticate, authorize(['admin', 'agent']), upload.array('images', 20), handleUploadError, async (req, res) => {
     try {
         const { property_id, existing_images } = req.body;
 
@@ -317,8 +316,7 @@ router.post('/images', upload.array('images', 20), handleUploadError, async (req
 });
 
 // DELETE /api/upload/image/:filename - Delete image
-// TODO: Add authentication middleware to protect this route
-router.delete('/image/:filename', async (req, res) => {
+router.delete('/image/:filename', authenticate, authorize(['admin', 'agent']), async (req, res) => {
     try {
         const { filename } = req.params;
 
@@ -365,9 +363,9 @@ router.delete('/image/:filename', async (req, res) => {
 });
 
 // POST /api/upload/tips-image - Upload featured image for tips article
-// Protected: Admin only (should add authentication middleware)
+// Protected: Admin only
 // Filename format: tips_{article_id}_{timestamp}.webp (for tracking)
-router.post('/tips-image', upload.single('image'), handleUploadError, async (req, res) => {
+router.post('/tips-image', authenticate, authorize(['admin']), upload.single('image'), handleUploadError, async (req, res) => {
     try {
         const { article_id } = req.body;
         // article_id is optional now
@@ -444,9 +442,9 @@ router.post('/tips-image', upload.single('image'), handleUploadError, async (req
 });
 
 // POST /api/upload/tips-content-image - Upload image for tips article content (rich text editor)
-// Protected: Admin only (should add authentication middleware)
+// Protected: Admin only
 // Filename format: tips_content_{article_id}_{timestamp}.webp (for tracking)
-router.post('/tips-content-image', upload.single('image'), handleUploadError, async (req, res) => {
+router.post('/tips-content-image', authenticate, authorize(['admin']), upload.single('image'), handleUploadError, async (req, res) => {
     try {
         const { article_id } = req.body;
         // article_id is optional
@@ -511,9 +509,9 @@ router.post('/tips-content-image', upload.single('image'), handleUploadError, as
 });
 
 // DELETE /api/upload/tips-image/:filename - Delete tips image
-// Protected: Admin only (should add authentication middleware)
+// Protected: Admin only
 // Supports both old format (tips_*.webp) and new format (tips_{article_id}_*.webp)
-router.delete('/tips-image/:filename', async (req, res) => {
+router.delete('/tips-image/:filename', authenticate, authorize(['admin']), async (req, res) => {
     try {
         const { filename } = req.params;
 

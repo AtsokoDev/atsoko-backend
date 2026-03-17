@@ -6,8 +6,6 @@ const { authenticate, authorize } = require('../middleware/auth');
 // =====================================================
 // Property Requests API
 // For delete requests from agents to admins.
-// NOTE: Edit requests via this endpoint are DEPRECATED.
-//       Use /api/property-versions/:propertyId/request-edit instead.
 // =====================================================
 
 /**
@@ -110,7 +108,7 @@ router.get('/', authenticate, authorize(['admin', 'agent']), async (req, res) =>
 
 /**
  * POST /api/property-requests
- * Create a new edit or delete request (Agent only)
+ * Create a new delete request (Agent only)
  */
 router.post('/', authenticate, authorize(['agent']), async (req, res) => {
     try {
@@ -124,21 +122,10 @@ router.post('/', authenticate, authorize(['agent']), async (req, res) => {
             });
         }
 
-        if (!['edit', 'delete'].includes(request_type)) {
+        if (request_type !== 'delete') {
             return res.status(400).json({
                 success: false,
-                error: 'request_type must be "edit" or "delete"'
-            });
-        }
-
-        // DEPRECATED: edit requests should use /api/property-versions/:propertyId/request-edit
-        if (request_type === 'edit') {
-            console.warn('[DEPRECATED] POST /property-requests with request_type="edit". Use /api/property-versions/:propertyId/request-edit instead.');
-            return res.status(410).json({
-                success: false,
-                error: 'Edit requests via this endpoint are deprecated. Use POST /api/property-versions/:propertyId/request-edit to create a version-based edit request.',
-                _deprecated: true,
-                redirect: `/api/property-versions/${property_id}/request-edit`
+                error: 'request_type must be "delete"'
             });
         }
 
@@ -238,7 +225,7 @@ router.post('/', authenticate, authorize(['agent']), async (req, res) => {
         );
 
         // Update property moderation_status
-        const newModStatus = request_type === 'delete' ? 'pending_delete' : 'pending_edit';
+        const newModStatus = 'pending_delete';
         await client.query(
             `UPDATE properties 
              SET moderation_status = $1, updated_at = NOW()
@@ -253,7 +240,7 @@ router.post('/', authenticate, authorize(['agent']), async (req, res) => {
                 (property_id, request_id, author_id, note_type, content)
                 VALUES ($1, $2, $3, $4, $5)`,
                 [property_id, result.rows[0].id, req.user.id,
-                    request_type === 'edit' ? 'fix_request' : 'general',
+                    'general',
                     reason]
             );
         }
@@ -261,7 +248,7 @@ router.post('/', authenticate, authorize(['agent']), async (req, res) => {
         // Record in workflow history (use new model fields)
         await client.query(
             `INSERT INTO workflow_history 
-             (property_id, previous_approval_status, new_approval_status, changed_by, reason)
+             (property_id, previous_publication_status, new_publication_status, changed_by, reason)
              VALUES ($1, $2, $2, $3, $4)`,
             [property_id, property.publication_status || 'draft', req.user.id,
              `Agent created ${request_type} request. Reason: ${reason || 'N/A'}`]
@@ -365,15 +352,12 @@ router.put('/:id/process', authenticate, authorize(['admin']), async (req, res) 
                 // Record in workflow history
                 await client.query(
                     `INSERT INTO workflow_history 
-                     (property_id, previous_approval_status, new_approval_status, changed_by, reason)
+                     (property_id, previous_publication_status, new_publication_status, changed_by, reason)
                      VALUES ($1, $2, 'deleted', $3, $4)`,
                     [request.property_id, request.publication_status || 'published', req.user.id,
                     `Delete request approved. Reason: ${admin_response || 'N/A'}`]
                 );
             }
-            // NOTE: edit request processing removed — edit requests are deprecated.
-            // If an old pending edit request exists, it will be marked approved but
-            // no changes are applied. Use property-versions for edit approvals.
         }
 
         // approve_unpublish: mark request approved but unpublish the listing instead of deleting
@@ -398,7 +382,7 @@ router.put('/:id/process', authenticate, authorize(['admin']), async (req, res) 
             // Record in workflow history
             await client.query(
                 `INSERT INTO workflow_history 
-                 (property_id, previous_approval_status, new_approval_status, changed_by, reason)
+                 (property_id, previous_publication_status, new_publication_status, changed_by, reason)
                  VALUES ($1, $2, 'pending', $3, $4)`,
                 [request.property_id, request.publication_status || 'published', req.user.id,
                 `Delete request approved as unpublish. Reason: ${admin_response || 'N/A'}`]
@@ -419,7 +403,7 @@ router.put('/:id/process', authenticate, authorize(['admin']), async (req, res) 
 
         // If rejected, update moderation_status to rejected_* so agent can revise
         if (action === 'reject') {
-            const rejectedModStatus = request.request_type === 'delete' ? 'rejected_delete' : 'rejected_edit';
+            const rejectedModStatus = 'rejected_delete';
             await client.query(
                 `UPDATE properties SET moderation_status = $1, updated_at = NOW() WHERE id = $2`,
                 [rejectedModStatus, request.property_id]
