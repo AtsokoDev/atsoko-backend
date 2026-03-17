@@ -1,7 +1,7 @@
 /**
  * Migration: Migrate features and labels columns from TEXT to JSONB
  * This provides better performance and proper JSON handling
- *
+ * test
  * Run: npm run migrate:features-labels-jsonb
  */
 
