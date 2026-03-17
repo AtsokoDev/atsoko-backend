@@ -4,6 +4,19 @@ const pool = require('../config/database');
 const { authenticate, authorize } = require('../middleware/auth');
 const { broadcastEvent } = require('../services/sse');
 
+async function getNoteCounts(propertyId) {
+    const result = await pool.query(
+        `SELECT
+            COUNT(*)::int AS note_count,
+            COUNT(*) FILTER (WHERE is_internal = false)::int AS public_note_count
+         FROM property_notes
+         WHERE property_id = $1`,
+        [propertyId]
+    );
+
+    return result.rows[0] || { note_count: 0, public_note_count: 0 };
+}
+
 // =====================================================
 // Property Notes API
 // For communication between admin and agent
@@ -196,18 +209,36 @@ router.post('/:propertyId', authenticate, authorize(['admin', 'agent']), async (
             author_role: req.user.role
         };
 
+        const noteCounts = await getNoteCounts(propertyId);
+
+        broadcastEvent('note:created', {
+            propertyId: Number(propertyId),
+            property_id: property.property_id,
+            noteId: result.rows[0].id,
+            note_type,
+            author_id: req.user.id,
+            is_internal: actualIsInternal,
+            note_count: noteCounts.note_count,
+            public_note_count: noteCounts.public_note_count
+        });
+
         // Emit SSE event if workflow was updated due to fix_response
         if (workflowUpdated && newModStatus) {
             broadcastEvent('note:fix_response_submitted', {
-                propertyId: propertyId,
+                propertyId: Number(propertyId),
                 property_id: property.property_id,
+                noteId: result.rows[0].id,
                 note_type: note_type,
+                author_id: req.user.id,
+                is_internal: actualIsInternal,
+                note_count: noteCounts.note_count,
+                public_note_count: noteCounts.public_note_count,
                 previous_moderation_status: modStatus,
                 new_moderation_status: newModStatus
             });
             // Also emit the general status_changed event for backward compatibility
             broadcastEvent('property:status_changed', {
-                propertyId: propertyId,
+                propertyId: Number(propertyId),
                 property_id: property.property_id,
                 moderation_status: newModStatus
             });
@@ -235,7 +266,7 @@ router.delete('/:propertyId/:noteId', authenticate, authorize(['admin', 'agent']
 
         // Get the note
         const noteResult = await pool.query(
-            'SELECT pn.*, p.agent_team FROM property_notes pn JOIN properties p ON pn.property_id = p.id WHERE pn.id = $1 AND pn.property_id = $2',
+            'SELECT pn.*, p.agent_team, p.property_id AS property_code FROM property_notes pn JOIN properties p ON pn.property_id = p.id WHERE pn.id = $1 AND pn.property_id = $2',
             [noteId, propertyId]
         );
 
@@ -270,6 +301,19 @@ router.delete('/:propertyId/:noteId', authenticate, authorize(['admin', 'agent']
         }
 
         await pool.query('DELETE FROM property_notes WHERE id = $1', [noteId]);
+
+        const noteCounts = await getNoteCounts(propertyId);
+
+        broadcastEvent('note:deleted', {
+            propertyId: Number(propertyId),
+            property_id: note.property_code,
+            noteId: Number(noteId),
+            note_type: note.note_type,
+            author_id: note.author_id,
+            is_internal: note.is_internal,
+            note_count: noteCounts.note_count,
+            public_note_count: noteCounts.public_note_count
+        });
 
         res.json({
             success: true,
