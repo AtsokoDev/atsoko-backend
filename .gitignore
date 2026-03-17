@@ -22,6 +22,8 @@ backups/
 *.sql
 !database/remove-edit-request-type.sql
 !database/rename-workflow-history-columns.sql
+!database/migrate-features-labels-to-jsonb.sql
+!database/drop-legacy-status-columns.sql
 *.sql.gz
 
 # Uploads (user uploaded files - different per environment)

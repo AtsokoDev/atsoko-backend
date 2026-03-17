@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const sanitizeHtml = require('sanitize-html');
+const { authenticate, authorize } = require('../middleware/auth');
 
 // Sanitize options for HTML content (same as tips)
 const sanitizeOptions = {
@@ -126,8 +127,8 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/faq - Create new FAQ
-// TODO: Add authentication middleware to protect this route
-router.post('/', async (req, res) => {
+// POST /api/faq - Create a new FAQ
+router.post('/', authenticate, authorize(['admin']), async (req, res) => {
     try {
         const {
             question,
@@ -167,8 +168,8 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/faq/:id - Update FAQ
-// TODO: Add authentication middleware to protect this route
-router.put('/:id', async (req, res) => {
+// PUT /api/faq/:id - Update an FAQ
+router.put('/:id', authenticate, authorize(['admin']), async (req, res) => {
     try {
         const { id } = req.params;
         const data = req.body;
@@ -246,8 +247,8 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/faq/:id - Delete FAQ
-// TODO: Add authentication middleware to protect this route
-router.delete('/:id', async (req, res) => {
+// DELETE /api/faq/:id - Delete an FAQ
+router.delete('/:id', authenticate, authorize(['admin']), async (req, res) => {
     try {
         const { id } = req.params;
 
