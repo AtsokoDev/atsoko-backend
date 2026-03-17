@@ -205,7 +205,7 @@ router.post('/:propertyId/request-edit', authenticate, authorize(['agent']), asy
         // Record in workflow history
         await client.query(
             `INSERT INTO workflow_history 
-             (property_id, previous_workflow_status, new_workflow_status, changed_by, reason)
+             (property_id, previous_moderation_status, new_moderation_status, changed_by, reason)
              VALUES ($1, $2, 'pending_edit', $3, $4)`,
             [propertyId, property.moderation_status || 'none', req.user.id, reason || 'Edit request created']
         );
@@ -373,7 +373,7 @@ router.put('/version/:versionId/submit', authenticate, authorize(['agent']), asy
         // Record in workflow history
         await client.query(
             `INSERT INTO workflow_history 
-             (property_id, previous_workflow_status, new_workflow_status, changed_by, reason)
+             (property_id, previous_moderation_status, new_moderation_status, changed_by, reason)
              VALUES ($1, $2, $3, $4, 'Version submitted for review')`,
             [version.property_id, version.moderation_status || 'none', newModStatus, req.user.id]
         );
@@ -603,8 +603,8 @@ router.put('/version/:versionId/approve', authenticate, authorize(['admin']), as
         // 7. Record in workflow history
         await client.query(
             `INSERT INTO workflow_history 
-             (property_id, previous_workflow_status, new_workflow_status,
-              previous_approval_status, new_approval_status, changed_by, reason)
+             (property_id, previous_moderation_status, new_moderation_status,
+              previous_publication_status, new_publication_status, changed_by, reason)
              VALUES ($1, $2, 'none', $3, 'published', $4, $5)`,
             [version.property_id, modStatus, pubStatus, req.user.id,
             note || `Version ${version.version_number} approved`]
@@ -714,7 +714,7 @@ router.put('/version/:versionId/reject', authenticate, authorize(['admin']), asy
             // Record in workflow history
             await client.query(
                 `INSERT INTO workflow_history 
-                 (property_id, previous_workflow_status, new_workflow_status, changed_by, reason)
+                 (property_id, previous_moderation_status, new_moderation_status, changed_by, reason)
                  VALUES ($1, $2, $3, $4, $5)`,
                 [version.property_id, modStatus, rejectedModStatus, req.user.id,
                 note || 'Returned for revision']
@@ -773,8 +773,8 @@ router.put('/version/:versionId/reject', authenticate, authorize(['admin']), asy
             // Record in workflow history
             await client.query(
                 `INSERT INTO workflow_history 
-                 (property_id, previous_workflow_status, new_workflow_status,
-                  previous_approval_status, new_approval_status, changed_by, reason)
+                 (property_id, previous_moderation_status, new_moderation_status,
+                  previous_publication_status, new_publication_status, changed_by, reason)
                  VALUES ($1, $2, 'none', $3, $4, $5, $6)`,
                 [version.property_id, modStatus, pubStatus, newPubStatus, req.user.id,
                 note || 'Version rejected']
@@ -992,7 +992,7 @@ router.delete('/version/:versionId', authenticate, authorize(['admin', 'agent'])
         // Record in workflow history
         await client.query(
             `INSERT INTO workflow_history 
-             (property_id, previous_workflow_status, new_workflow_status, changed_by, reason)
+             (property_id, previous_moderation_status, new_moderation_status, changed_by, reason)
              VALUES ($1, $2, 'none', $3, 'Version draft discarded')`,
             [version.property_id, modStatus, req.user.id]
         );

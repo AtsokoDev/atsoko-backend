@@ -13,12 +13,14 @@ router.get('/', async (req, res) => {
         AVG(price) as avg_price,
         AVG(size) as avg_size
       FROM properties
+      WHERE publication_status = 'published'
     `);
     
     const typeStats = await pool.query(`
       SELECT type, COUNT(*) as count
       FROM properties
       WHERE type IS NOT NULL
+        AND publication_status = 'published'
       GROUP BY type
       ORDER BY count DESC
     `);
@@ -27,6 +29,7 @@ router.get('/', async (req, res) => {
       SELECT province, COUNT(*) as count
       FROM properties
       WHERE province IS NOT NULL
+        AND publication_status = 'published'
       GROUP BY province
       ORDER BY count DESC
       LIMIT 10

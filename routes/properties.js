@@ -2163,7 +2163,7 @@ router.delete('/:id', authenticate, authorize(['admin', 'agent']), async (req, r
         // Record in workflow history
         await pool.query(
             `INSERT INTO workflow_history 
-             (property_id, previous_approval_status, new_approval_status, changed_by, reason)
+             (property_id, previous_publication_status, new_publication_status, changed_by, reason)
              VALUES ($1, $2, 'deleted', $3, 'Property soft deleted')`,
             [property.id, property.publication_status || 'unknown', req.user.id]
         );
@@ -2223,7 +2223,7 @@ router.put('/:id/restore', authenticate, authorize(['admin']), async (req, res) 
         // Record in workflow history
         await pool.query(
             `INSERT INTO workflow_history 
-             (property_id, previous_approval_status, new_approval_status, changed_by, reason)
+             (property_id, previous_publication_status, new_publication_status, changed_by, reason)
              VALUES ($1, 'deleted', 'draft', $2, 'Property restored from trash')`,
             [property.id, req.user.id]
         );

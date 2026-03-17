@@ -55,7 +55,7 @@ async function runMigration() {
             CREATE TABLE IF NOT EXISTS property_requests (
                 id SERIAL PRIMARY KEY,
                 property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
-                request_type VARCHAR(20) NOT NULL CHECK (request_type IN ('edit', 'delete')),
+                request_type VARCHAR(20) NOT NULL CHECK (request_type = 'delete'),
                 status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
                 requested_by INTEGER NOT NULL REFERENCES users(id),
                 reason TEXT,
@@ -108,10 +108,10 @@ async function runMigration() {
             CREATE TABLE IF NOT EXISTS workflow_history (
                 id SERIAL PRIMARY KEY,
                 property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
-                previous_workflow_status VARCHAR(50),
-                new_workflow_status VARCHAR(50),
-                previous_approval_status VARCHAR(50),
-                new_approval_status VARCHAR(50),
+                previous_moderation_status VARCHAR(50),
+                new_moderation_status VARCHAR(50),
+                previous_publication_status VARCHAR(50),
+                new_publication_status VARCHAR(50),
                 changed_by INTEGER NOT NULL REFERENCES users(id),
                 reason TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
