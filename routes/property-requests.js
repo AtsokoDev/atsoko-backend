@@ -245,12 +245,16 @@ router.post('/', authenticate, authorize(['agent']), async (req, res) => {
             );
         }
 
-        // Record in workflow history (use new model fields)
+        // Record in workflow history
+        // Include moderation transition so activity logs can classify delete-request events correctly.
         await client.query(
             `INSERT INTO workflow_history 
-             (property_id, previous_publication_status, new_publication_status, changed_by, reason)
-             VALUES ($1, $2, $2, $3, $4)`,
-            [property_id, property.publication_status || 'draft', req.user.id,
+             (property_id,
+              previous_moderation_status, new_moderation_status,
+              previous_publication_status, new_publication_status,
+              changed_by, reason)
+             VALUES ($1, $2, $3, $4, $4, $5, $6)`,
+            [property_id, modStatus, newModStatus, property.publication_status || 'draft', req.user.id,
              `Agent created ${request_type} request. Reason: ${reason || 'N/A'}`]
         );
 
