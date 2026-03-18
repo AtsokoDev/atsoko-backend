@@ -12,6 +12,7 @@
     "migrate:workflow-history": "node database/run-rename-workflow-history.js",
     "migrate:remove-edit-request-type": "node database/run-remove-edit-request-type.js",
     "migrate:features-labels-jsonb": "node database/run-migrate-features-labels.js",
+    "migrate:activity-logs-indexes": "node database/run-add-activity-logs-indexes.js",
     "create-admin": "node scripts/create-admin.js"
   },
   "keywords": [
