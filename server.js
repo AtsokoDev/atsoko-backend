@@ -27,6 +27,7 @@ const propertyNotesRouter = require('./routes/property-notes');
 const propertyWorkflowRouter = require('./routes/property-workflow');
 const noteTypesRouter = require('./routes/note-types');
 const propertyVersionsRouter = require('./routes/property-versions');
+const activityLogsRouter    = require('./routes/activity-logs');
 
 app.use('/api/properties', propertiesRouter);
 app.use('/api/stats', statsRouter);
@@ -41,6 +42,7 @@ app.use('/api/property-notes', propertyNotesRouter);
 app.use('/api/property-workflow', propertyWorkflowRouter);
 app.use('/api/note-types', noteTypesRouter);
 app.use('/api/property-versions', propertyVersionsRouter);
+app.use('/api/activity-logs',     activityLogsRouter);
 
 // ─── Server-Sent Events endpoint ────────────────────────────────────────────
 // EventSource cannot set custom headers, so we also accept token via ?token=
