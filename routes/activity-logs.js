@@ -106,11 +106,12 @@ const ACTION_TARGET_SQL = `
 `;
 
 // Shared SELECT block (same shape for list + detail)
+// Note: Timestamps stored as naive (local Thai) → convert to Asia/Bangkok for consistency
 const SELECT_COLS = `
     wh.id,
-    -- Timestamps
-    wh.created_at AT TIME ZONE 'UTC'        AS occurred_at,
-    wh.created_at                           AS time,
+    -- Timestamps (naive stored as Thai local time, convert to Asia/Bangkok explicitly)
+    wh.created_at AT TIME ZONE 'Asia/Bangkok'   AS occurred_at,
+    wh.created_at                               AS time,
     -- Actor
     u.id                                    AS user_id,
     u.name                                  AS user_name,
@@ -215,12 +216,14 @@ router.get('/', authenticate, authorize(['admin', 'agent']), async (req, res) =>
 
         if (date_from) {
             params.push(date_from);
-            conditions.push(`wh.created_at >= $${params.length}::date`);
+            // Convert naive timestamp to Thai timezone before comparing dates
+            conditions.push(`(wh.created_at AT TIME ZONE 'Asia/Bangkok')::date >= $${params.length}::date`);
         }
 
         if (date_to) {
             params.push(date_to);
-            conditions.push(`wh.created_at < ($${params.length}::date + INTERVAL '1 day')`);
+            // Convert naive timestamp to Thai timezone, make date_to exclusive (next day)
+            conditions.push(`(wh.created_at AT TIME ZONE 'Asia/Bangkok')::date < ($${params.length}::date + INTERVAL '1 day')`);
         }
 
         if (user_id) {
@@ -305,7 +308,8 @@ router.get('/', authenticate, authorize(['admin', 'agent']), async (req, res) =>
 // ─── GET /api/activity-logs/users ────────────────────────────────────────────
 // Returns user list for the filter dropdown
 // Route order: /users before /:id so Express matches static before dynamic
-// Admin: all users | Agent: admins + own team
+// Only show users that have created activity logs (changed_by in workflow_history)
+// Admin: all active users with logs | Agent: admins + own team members with logs
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/users', authenticate, authorize(['admin', 'agent']), async (req, res) => {
     try {
@@ -314,20 +318,23 @@ router.get('/users', authenticate, authorize(['admin', 'agent']), async (req, re
 
         if (req.user.role === 'admin') {
             query = `
-                SELECT id, name, role, team
-                FROM   users
-                WHERE  is_active = true
-                ORDER  BY name
+                SELECT DISTINCT u.id, u.name, u.role, u.team
+                FROM   users u
+                WHERE  u.is_active = true
+                  AND  u.id IN (SELECT DISTINCT changed_by FROM workflow_history)
+                ORDER  BY u.name
             `;
         } else {
             // Agent sees: admins (who process requests) + own team members
+            // But only if they have activity logs
             params = [req.user.id, req.user.team];
             query = `
-                SELECT id, name, role, team
-                FROM   users
-                WHERE  is_active = true
-                  AND  (role = 'admin' OR id = $1 OR team = $2)
-                ORDER  BY name
+                SELECT DISTINCT u.id, u.name, u.role, u.team
+                FROM   users u
+                WHERE  u.is_active = true
+                  AND  (u.role = 'admin' OR u.id = $1 OR u.team = $2)
+                  AND  u.id IN (SELECT DISTINCT changed_by FROM workflow_history)
+                ORDER  BY u.name
             `;
         }
 
