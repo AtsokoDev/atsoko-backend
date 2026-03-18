@@ -257,7 +257,7 @@ router.put('/version/:versionId', authenticate, authorize(['admin', 'agent']), a
 
         // Get the version
         const versionResult = await pool.query(
-            `SELECT pv.*, p.agent_team, p.publication_status
+            `SELECT pv.*, p.agent_team, p.publication_status, p.moderation_status
              FROM property_versions pv
              JOIN properties p ON pv.property_id = p.id
              WHERE pv.id = $1`,
@@ -297,6 +297,23 @@ router.put('/version/:versionId', authenticate, authorize(['admin', 'agent']), a
             [JSON.stringify(mergedData), versionId]
         );
 
+        // Record in workflow history (no status change, just draft save)
+        await pool.query(
+            `INSERT INTO workflow_history
+             (property_id,
+              previous_moderation_status, new_moderation_status,
+              previous_publication_status, new_publication_status,
+              changed_by, reason)
+             VALUES ($1, $2, $2, $3, $3, $4, $5)`,
+            [
+                version.property_id,
+                version.moderation_status || 'none',
+                version.publication_status || 'draft',
+                req.user.id,
+                'Edit draft saved'
+            ]
+        );
+
         res.json({
             success: true,
             message: 'Version updated successfully',
@@ -322,6 +339,7 @@ router.put('/version/:versionId/submit', authenticate, authorize(['agent']), asy
 
     try {
         const { versionId } = req.params;
+        const { note } = req.body;   // user-provided reason when submitting
 
         await client.query('BEGIN');
 
@@ -374,8 +392,9 @@ router.put('/version/:versionId/submit', authenticate, authorize(['agent']), asy
         await client.query(
             `INSERT INTO workflow_history 
              (property_id, previous_moderation_status, new_moderation_status, changed_by, reason)
-             VALUES ($1, $2, $3, $4, 'Version submitted for review')`,
-            [version.property_id, version.moderation_status || 'none', newModStatus, req.user.id]
+             VALUES ($1, $2, $3, $4, $5)`,
+            [version.property_id, version.moderation_status || 'none', newModStatus, req.user.id,
+             note || 'Version submitted for review']
         );
 
         await client.query('COMMIT');
@@ -468,10 +487,13 @@ router.get('/version/:versionId/diff', authenticate, authorize(['admin', 'agent'
  */
 router.put('/version/:versionId/approve', authenticate, authorize(['admin']), async (req, res) => {
     const client = await pool.connect();
+    let approveContext = null;
 
     try {
         const { versionId } = req.params;
         const { note } = req.body;
+
+        console.log(`[APPROVE VERSION] Start versionId=${versionId} adminId=${req.user.id}`);
 
         await client.query('BEGIN');
 
@@ -490,6 +512,28 @@ router.put('/version/:versionId/approve', authenticate, authorize(['admin']), as
         }
 
         const version = versionResult.rows[0];
+        approveContext = {
+            versionId,
+            adminId: req.user.id,
+            propertyId: version.property_id,
+            versionNumber: version.version_number,
+            versionStatus: version.status,
+            versionIsLive: version.is_live,
+            publicationStatus: version.publication_status,
+            moderationStatus: version.moderation_status || 'none'
+        };
+
+        console.log(`[APPROVE VERSION] Context propertyId=${version.property_id} versionNo=${version.version_number} status=${version.status} pub=${version.publication_status} mod=${version.moderation_status || 'none'}`);
+
+        const liveVersionsResult = await client.query(
+            `SELECT id, version_number, status, is_live
+             FROM property_versions
+             WHERE property_id = $1 AND is_live = true
+             ORDER BY version_number DESC`,
+            [version.property_id]
+        );
+
+        console.log(`[APPROVE VERSION] Live versions before approve propertyId=${version.property_id}: ${JSON.stringify(liveVersionsResult.rows)}`);
 
         if (version.status !== 'pending') {
             await client.query('ROLLBACK');
@@ -601,14 +645,17 @@ router.put('/version/:versionId/approve', authenticate, authorize(['admin']), as
         );
 
         // 7. Record in workflow history
-        await client.query(
+        const workflowInsertResult = await client.query(
             `INSERT INTO workflow_history 
              (property_id, previous_moderation_status, new_moderation_status,
               previous_publication_status, new_publication_status, changed_by, reason)
-             VALUES ($1, $2, 'none', $3, 'published', $4, $5)`,
+             VALUES ($1, $2, 'none', $3, 'published', $4, $5)
+             RETURNING id`,
             [version.property_id, modStatus, pubStatus, req.user.id,
             note || `Version ${version.version_number} approved`]
         );
+
+        console.log(`[APPROVE VERSION] workflow_history inserted id=${workflowInsertResult.rows[0]?.id} propertyId=${version.property_id} prevMod=${modStatus} newMod=none prevPub=${pubStatus} newPub=published reason=${JSON.stringify(note || `Version ${version.version_number} approved`)}`);
 
         // 8. Add approval note
         await client.query(
@@ -619,6 +666,8 @@ router.put('/version/:versionId/approve', authenticate, authorize(['admin']), as
         );
 
         await client.query('COMMIT');
+
+        console.log(`[APPROVE VERSION] Commit success versionId=${versionId} propertyId=${version.property_id}`);
 
         broadcastEvent('property:published', {
             propertyId: version.property_id,
@@ -638,7 +687,22 @@ router.put('/version/:versionId/approve', authenticate, authorize(['admin']), as
         });
     } catch (error) {
         await client.query('ROLLBACK');
-        console.error('[PUT /property-versions/version/:versionId/approve] Error:', error);
+        console.error('[PUT /property-versions/version/:versionId/approve] Error:', {
+            message: error.message,
+            code: error.code,
+            detail: error.detail,
+            hint: error.hint,
+            constraint: error.constraint,
+            table: error.table,
+            column: error.column,
+            where: error.where,
+            position: error.position,
+            internalPosition: error.internalPosition,
+            internalQuery: error.internalQuery,
+            context: approveContext,
+            versionId: req.params?.versionId,
+            adminId: req.user?.id
+        });
         res.status(500).json({ success: false, error: 'Database error' });
     } finally {
         client.release();
@@ -771,12 +835,19 @@ router.put('/version/:versionId/reject', authenticate, authorize(['admin']), asy
             }
 
             // Record in workflow history
+            // NOTE: for published+pending_edit, we log new_mod as 'rejected_edit' in the
+            // history record (even though the property's actual mod is reset to 'none')
+            // so EVENT_TYPE_SQL can distinguish this from an approve.
+            const historyNewMod = (modStatus === 'pending_edit' && pubStatus === 'published')
+                ? 'rejected_edit'
+                : 'rejected_add';   // pending_add → was deleted above, log rejected_add
+
             await client.query(
                 `INSERT INTO workflow_history 
                  (property_id, previous_moderation_status, new_moderation_status,
                   previous_publication_status, new_publication_status, changed_by, reason)
-                 VALUES ($1, $2, 'none', $3, $4, $5, $6)`,
-                [version.property_id, modStatus, pubStatus, newPubStatus, req.user.id,
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [version.property_id, modStatus, historyNewMod, pubStatus, newPubStatus, req.user.id,
                 note || 'Version rejected']
             );
 

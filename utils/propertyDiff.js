@@ -186,8 +186,15 @@ const buildApplyVersionQuery = (versionData, startIdx = 1) => {
             if (field === 'building_type' && (versionData[field] === '' || versionData[field] === null)) {
                 continue;
             }
+
+            // Serialize JSON/array fields for JSONB columns when snapshot stores them as JS arrays/objects
+            let value = versionData[field];
+            if (field === 'images' && value !== null && typeof value !== 'string') {
+                value = JSON.stringify(value);
+            }
+
             setClauses.push(`"${field}" = $${idx}`);
-            params.push(versionData[field]);
+            params.push(value);
             idx++;
         }
     }

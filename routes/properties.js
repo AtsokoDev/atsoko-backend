@@ -1557,7 +1557,25 @@ router.post('/', authenticate, authorize(['admin', 'agent']), async (req, res) =
 
             const result = await client.query(insertQuery, valuesWithExtras);
 
-            // Step 6: Commit transaction
+            // Step 6: Record creation in workflow history (for activity timeline)
+            const createdProperty = result.rows[0];
+            await client.query(
+                `INSERT INTO workflow_history
+                 (property_id,
+                  previous_moderation_status, new_moderation_status,
+                  previous_publication_status, new_publication_status,
+                  changed_by, reason)
+                 VALUES ($1, NULL, $2, NULL, $3, $4, $5)`,
+                [
+                    createdProperty.id,
+                    createdProperty.moderation_status || 'none',
+                    createdProperty.publication_status || 'draft',
+                    req.user.id,
+                    `Property created (${createdProperty.publication_status || 'draft'})`
+                ]
+            );
+
+            // Step 7: Commit transaction
             await client.query('COMMIT');
 
             console.log(`[CREATE PROPERTY] Successfully created property: ${propertyId} (id: ${result.rows[0].id})`);
@@ -2049,6 +2067,27 @@ router.put('/:id', authenticate, authorize(['admin', 'agent']), async (req, res)
                 }
             }
         }
+
+        // Record direct property update in workflow history so timeline can show
+        // admin/agent save actions outside the submit/publish workflow.
+        const finalProperty = result.rows[0];
+        await pool.query(
+            `INSERT INTO workflow_history
+             (property_id,
+              previous_moderation_status, new_moderation_status,
+              previous_publication_status, new_publication_status,
+              changed_by, reason)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+                finalProperty.id,
+                property.moderation_status || 'none',
+                finalProperty.moderation_status || 'none',
+                property.publication_status || 'draft',
+                finalProperty.publication_status || 'draft',
+                req.user.id,
+                finalProperty.publication_status === 'draft' ? 'Draft property updated' : 'Property updated'
+            ]
+        );
 
         res.json({ success: true, data: result.rows[0], message: 'Property updated successfully' });
 
