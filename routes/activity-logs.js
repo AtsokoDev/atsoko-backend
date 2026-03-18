@@ -37,14 +37,28 @@ const normalizeRow = (row) => {
     // Promote event_type for "requested_edit / requested_delete"
     // These entries have prev_pub == new_pub (no pub change) and reason from agent
     let eventType = row.event_type;
-    if (eventType === 'updated_other' && raw) {
-        if (/\bedit request\b/i.test(raw))   eventType = 'requested_edit';
-        if (/\bdelete request\b/i.test(raw)) eventType = 'requested_delete';
+    let action = row.action;
+    let actionTarget = row.action_target;
+
+    if (raw) {
+        if (/^agent created edit request\b/i.test(raw) || (eventType === 'updated_other' && /\bedit request\b/i.test(raw))) {
+            eventType = 'requested_edit';
+            action = 'Edit Request';
+            actionTarget = 'edit';
+        }
+
+        if (/^agent created delete request\b/i.test(raw) || (eventType === 'updated_other' && /\bdelete request\b/i.test(raw))) {
+            eventType = 'requested_delete';
+            action = 'Delete Request';
+            actionTarget = 'delete';
+        }
     }
 
     return {
         ...row,
+        action,
         event_type:       eventType,
+        action_target:    actionTarget,
         reason:           sys ? null : raw,
         reason_raw:       raw,
         is_system_reason: sys,
@@ -56,6 +70,8 @@ const normalizeRow = (row) => {
 // Human-readable label — backward-compat, frontend should prefer event_type
 const ACTION_LABEL_SQL = `
     CASE
+        WHEN wh.reason ILIKE 'Property created (%'                                                  THEN 'Created Draft'
+        WHEN wh.reason ILIKE 'Edit draft saved%'                                                    THEN 'Saved Draft'
         WHEN wh.new_moderation_status = 'pending_add'                                                THEN 'Add Listing'
         WHEN wh.new_moderation_status = 'pending_edit'                                               THEN 'Edit Request'
         WHEN wh.new_moderation_status = 'pending_delete'                                             THEN 'Delete Request'
@@ -72,20 +88,54 @@ const ACTION_LABEL_SQL = `
 // event_type enum — priority order matters (most-specific first)
 const EVENT_TYPE_SQL = `
     CASE
+        WHEN wh.reason ILIKE 'Property created (%'                                                  THEN 'created'
+        WHEN wh.reason ILIKE 'Edit draft saved%'                                                    THEN 'version_draft_saved'
         -- 1. Specific publication state transitions
         WHEN wh.new_publication_status = 'draft'
              AND wh.previous_publication_status = 'deleted'                                          THEN 'restored'
         WHEN wh.new_publication_status = 'deleted'                                                   THEN 'deleted'
         WHEN wh.new_publication_status = 'unpublished'                                               THEN 'unpublished'
-        -- 2. Approve decisions (publish wins over plain approve)
+        -- 1b. Explicit request events — evaluate before publication checks because some
+        --     historical rows kept new_publication_status='published'
+        WHEN wh.reason ILIKE 'Agent created delete request.%'                                        THEN 'requested_delete'
+        WHEN wh.reason ILIKE 'Agent created edit request.%'                                          THEN 'requested_edit'
+           -- 2. Return for revision vs complete rejection — evaluate before publication checks
+           --    return (soft):    new_mod=rejected_edit, new_pub=null
+           --    reject (hard):    new_mod=rejected_edit, new_pub=published  (after fix)
+           --    reject historical: new_mod=none, new_pub=published, with nearby rejection note
+        WHEN wh.new_moderation_status LIKE 'rejected_%'
+             AND (wh.new_publication_status IS NULL
+                  OR wh.new_publication_status != 'published')                                      THEN 'returned_for_revision'
+        WHEN wh.new_moderation_status LIKE 'rejected_%'
+             AND wh.new_publication_status = 'published'                                            THEN 'rejected'
+        -- 2b. Historical complete reject on published (logged before fix: new_mod=none)
+        WHEN wh.new_moderation_status = 'none'
+             AND wh.previous_moderation_status = 'pending_edit'
+             AND wh.new_publication_status = 'published'
+               AND EXISTS (
+                  SELECT 1
+                  FROM property_notes pn
+                  WHERE pn.property_id = wh.property_id
+                    AND pn.author_id = wh.changed_by
+                    AND pn.note_type = 'rejection'
+                    AND pn.created_at BETWEEN wh.created_at - INTERVAL '10 seconds'
+                                     AND wh.created_at + INTERVAL '10 seconds'
+               )                                                                                      THEN 'rejected'
+        -- 3. Approve decisions (publish wins over plain approve)
         WHEN wh.new_publication_status = 'published'                                                 THEN 'approved_and_published'
         WHEN wh.new_moderation_status = 'none'
              AND wh.previous_moderation_status LIKE 'pending_%'                                      THEN 'approved'
-        -- 3. Return for revision (rejected_* mod statuses — prop still exists)
-        WHEN wh.new_moderation_status LIKE 'rejected_%'                                              THEN 'returned_for_revision'
         -- 4. Submit for review (split by target)
         WHEN wh.new_moderation_status = 'pending_add'                                                THEN 'submitted_for_review'
-        WHEN wh.new_moderation_status = 'pending_edit'                                               THEN 'submitted_edit_for_review'
+        -- pending_edit: distinguish draft-created vs submitted for review
+        -- edit_draft_created:        prev=none (brand-new draft via request-edit)
+        -- submitted_edit_for_review: prev=pending_edit (first submit)
+        --                            prev=rejected_edit (re-submit after revision)
+        WHEN wh.new_moderation_status = 'pending_edit'
+             AND (wh.previous_moderation_status IS NULL
+                  OR wh.previous_moderation_status = 'none')                                        THEN 'edit_draft_created'
+        WHEN wh.new_moderation_status = 'pending_edit'
+             AND wh.previous_moderation_status IN ('pending_edit', 'rejected_edit')                 THEN 'submitted_edit_for_review'
         WHEN wh.new_moderation_status = 'pending_delete'                                             THEN 'submitted_delete_for_review'
         -- 5. Fallback — JS normalizeRow may upgrade to requested_edit / requested_delete
         ELSE 'updated_other'
@@ -95,6 +145,8 @@ const EVENT_TYPE_SQL = `
 // action_target — add | edit | delete | null
 const ACTION_TARGET_SQL = `
     CASE
+        WHEN wh.reason ILIKE 'Property created (%'                                                  THEN 'add'
+        WHEN wh.reason ILIKE 'Edit draft saved%'                                                    THEN 'edit'
         WHEN wh.new_moderation_status      IN ('pending_add',    'rejected_add')    THEN 'add'
         WHEN wh.new_moderation_status      IN ('pending_edit',   'rejected_edit')   THEN 'edit'
         WHEN wh.new_moderation_status      IN ('pending_delete', 'rejected_delete') THEN 'delete'
@@ -140,6 +192,7 @@ const SELECT_COLS = `
 
 // action_type → SQL (backward-compat param name kept; prefer event_type going forward)
 const ACTION_TYPE_CONDITIONS = {
+    created:        `wh.reason ILIKE 'Property created (%'`,
     add_listing:    `wh.new_moderation_status = 'pending_add'`,
     edit_request:   `wh.new_moderation_status = 'pending_edit'`,
     delete_request: `wh.new_moderation_status = 'pending_delete'`,
@@ -153,15 +206,34 @@ const ACTION_TYPE_CONDITIONS = {
 
 // event_type → SQL (new, preferred)
 const EVENT_TYPE_CONDITIONS = {
+    created:                     `wh.reason ILIKE 'Property created (%'`,
     restored:                    `wh.new_publication_status = 'draft' AND wh.previous_publication_status = 'deleted'`,
     deleted:                     `wh.new_publication_status = 'deleted'`,
     unpublished:                 `wh.new_publication_status = 'unpublished'`,
     approved_and_published:      `wh.new_publication_status = 'published'`,
     approved:                    `wh.new_moderation_status = 'none' AND wh.previous_moderation_status LIKE 'pending_%'`,
-    returned_for_revision:       `wh.new_moderation_status LIKE 'rejected_%'`,
+    returned_for_revision:       `(wh.new_moderation_status LIKE 'rejected_%' AND (wh.new_publication_status IS NULL OR wh.new_publication_status != 'published'))`,
+    rejected:                    `(wh.new_moderation_status LIKE 'rejected_%' AND wh.new_publication_status = 'published')
+                                   OR (
+                                       wh.new_moderation_status = 'none'
+                                       AND wh.previous_moderation_status = 'pending_edit'
+                                       AND wh.new_publication_status = 'published'
+                                       AND EXISTS (
+                                           SELECT 1
+                                           FROM property_notes pn
+                                           WHERE pn.property_id = wh.property_id
+                                             AND pn.author_id = wh.changed_by
+                                             AND pn.note_type = 'rejection'
+                                             AND pn.created_at BETWEEN wh.created_at - INTERVAL '10 seconds'
+                                                                   AND wh.created_at + INTERVAL '10 seconds'
+                                       )
+                                   )`,
     submitted_for_review:        `wh.new_moderation_status = 'pending_add'`,
-    submitted_edit_for_review:   `wh.new_moderation_status = 'pending_edit'`,
+    version_draft_saved:          `wh.reason ILIKE 'Edit draft saved%'`,
+    edit_draft_created:          `wh.new_moderation_status = 'pending_edit' AND (wh.previous_moderation_status IS NULL OR wh.previous_moderation_status = 'none')`,
+    submitted_edit_for_review:   `wh.new_moderation_status = 'pending_edit' AND wh.previous_moderation_status IN ('pending_edit','rejected_edit')`,
     submitted_delete_for_review: `wh.new_moderation_status = 'pending_delete'`,
+    edit_request:                `wh.new_moderation_status = 'pending_edit'`,   // broad: covers both draft + submit
     requested_edit:              `(wh.reason ILIKE '%edit request%')`,
     requested_delete:            `(wh.reason ILIKE '%delete request%')`,
 };
