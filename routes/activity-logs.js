@@ -29,36 +29,13 @@ const isSystemReason = (reason) => {
     return SYSTEM_REASON_RE.some((re) => re.test(reason.trim()));
 };
 
-// ─── Post-process a single row: clean reason fields + promote event_type ─────
+// ─── Post-process a single row: clean reason fields only ─────────────────────
 const normalizeRow = (row) => {
     const raw = row.reason ?? null;
     const sys = isSystemReason(raw);
 
-    // Promote event_type for "requested_edit / requested_delete"
-    // These entries have prev_pub == new_pub (no pub change) and reason from agent
-    let eventType = row.event_type;
-    let action = row.action;
-    let actionTarget = row.action_target;
-
-    if (raw) {
-        if (/^agent created edit request\b/i.test(raw) || (eventType === 'updated_other' && /\bedit request\b/i.test(raw))) {
-            eventType = 'requested_edit';
-            action = 'Edit Request';
-            actionTarget = 'edit';
-        }
-
-        if (/^agent created delete request\b/i.test(raw) || (eventType === 'updated_other' && /\bdelete request\b/i.test(raw))) {
-            eventType = 'requested_delete';
-            action = 'Delete Request';
-            actionTarget = 'delete';
-        }
-    }
-
     return {
         ...row,
-        action,
-        event_type:       eventType,
-        action_target:    actionTarget,
         reason:           sys ? null : raw,
         reason_raw:       raw,
         is_system_reason: sys,
@@ -137,7 +114,7 @@ const EVENT_TYPE_SQL = `
         WHEN wh.new_moderation_status = 'pending_edit'
              AND wh.previous_moderation_status IN ('pending_edit', 'rejected_edit')                 THEN 'submitted_edit_for_review'
         WHEN wh.new_moderation_status = 'pending_delete'                                             THEN 'submitted_delete_for_review'
-        -- 5. Fallback — JS normalizeRow may upgrade to requested_edit / requested_delete
+        -- 5. Fallback
         ELSE 'updated_other'
     END
 `;
@@ -185,7 +162,8 @@ const SELECT_COLS = `
     -- Property
     p.id                                    AS property_db_id,
     p.property_id                           AS property_code,
-    p.title                                 AS property_name
+    p.title                                 AS property_name,
+    p.agent_team                            AS agent_team
 `;
 
 // ─── Filter whitelists ────────────────────────────────────────────────────────
@@ -236,6 +214,7 @@ const EVENT_TYPE_CONDITIONS = {
     edit_request:                `wh.new_moderation_status = 'pending_edit'`,   // broad: covers both draft + submit
     requested_edit:              `(wh.reason ILIKE '%edit request%')`,
     requested_delete:            `(wh.reason ILIKE '%delete request%')`,
+    updated_other:              `TRUE`,
 };
 
 // action_target → SQL
@@ -245,6 +224,90 @@ const ACTION_TARGET_CONDITIONS = {
     delete: `wh.new_moderation_status IN ('pending_delete','rejected_delete') OR wh.previous_moderation_status IN ('pending_delete','rejected_delete')`,
 };
 
+const EVENT_TYPE_META = [
+    { value: 'created', label: 'Created Draft' },
+    { value: 'version_draft_saved', label: 'Saved Edit Draft' },
+    { value: 'submitted_for_review', label: 'Submitted for Review' },
+    { value: 'edit_draft_created', label: 'Created Edit Draft' },
+    { value: 'submitted_edit_for_review', label: 'Submitted Edit for Review' },
+    { value: 'submitted_delete_for_review', label: 'Submitted Delete for Review' },
+    { value: 'requested_edit', label: 'Requested Edit' },
+    { value: 'requested_delete', label: 'Requested Delete' },
+    { value: 'returned_for_revision', label: 'Returned for Revision' },
+    { value: 'rejected', label: 'Rejected' },
+    { value: 'approved_and_published', label: 'Approved & Published' },
+    { value: 'approved', label: 'Approved' },
+    { value: 'unpublished', label: 'Unpublished' },
+    { value: 'deleted', label: 'Deleted' },
+    { value: 'restored', label: 'Restored' },
+    { value: 'updated_other', label: 'Updated' },
+];
+
+// ─── GET /api/activity-logs/meta ─────────────────────────────────────────────
+// Returns canonical filter metadata for frontend dropdowns
+// - event_types: source of truth for action dropdown labels
+// - agent_teams: teams visible to current user (ACL-aware)
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/meta', authenticate, authorize(['admin', 'agent']), async (req, res) => {
+    try {
+        const params = [];
+        const conditions = [];
+
+        if (req.user.role === 'agent') {
+            params.push(req.user.team);
+            conditions.push(`p.agent_team = $${params.length}`);
+        }
+
+        const whereSQL = conditions.length > 0
+            ? `WHERE ${conditions.join(' AND ')}`
+            : '';
+
+        const teamResult = await pool.query(
+            `SELECT DISTINCT p.agent_team AS team
+             FROM workflow_history wh
+             JOIN properties p ON p.id = wh.property_id
+             ${whereSQL ? `${whereSQL} AND` : 'WHERE'} p.agent_team IS NOT NULL
+             AND p.agent_team <> ''
+             ORDER BY p.agent_team ASC`,
+            params
+        );
+
+        const adminWhereSQL = conditions.length > 0
+            ? `WHERE ${conditions.join(' AND ')}`
+            : '';
+
+        const adminResult = await pool.query(
+            `SELECT 1
+             FROM workflow_history wh
+             JOIN users u ON u.id = wh.changed_by
+             JOIN properties p ON p.id = wh.property_id
+             ${adminWhereSQL ? `${adminWhereSQL} AND` : 'WHERE'} u.role = 'admin'
+             LIMIT 1`,
+            params
+        );
+
+        const teams = teamResult.rows
+            .map((row) => String(row.team || '').trim().toUpperCase())
+            .filter(Boolean);
+
+        const uniqueTeams = [...new Set(teams)].map((team) => ({ value: team, label: team }));
+        if (adminResult.rowCount > 0) {
+            uniqueTeams.unshift({ value: 'ADMIN', label: 'Admin' });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                event_types: EVENT_TYPE_META,
+                agent_teams: uniqueTeams,
+            },
+        });
+    } catch (error) {
+        console.error('[GET /activity-logs/meta] Error:', error);
+        res.status(500).json({ success: false, error: 'Database error' });
+    }
+});
+
 // ─── GET /api/activity-logs ───────────────────────────────────────────────────
 // Query params:
 //   date_from    YYYY-MM-DD
@@ -253,6 +316,7 @@ const ACTION_TARGET_CONDITIONS = {
 //   action_type  backward-compat (see ACTION_TYPE_CONDITIONS)
 //   event_type   preferred — see EVENT_TYPE_CONDITIONS keys
 //   action_target add|edit|delete
+//   agent_team   team code (e.g. A|B|C)
 //   actor_role   admin|agent
 //   search       property_id or title (partial)
 //   page         default 1
@@ -267,6 +331,7 @@ router.get('/', authenticate, authorize(['admin', 'agent']), async (req, res) =>
             action_type,
             event_type,
             action_target,
+            agent_team,
             actor_role,
             search,
             page  = 1,
@@ -308,9 +373,22 @@ router.get('/', authenticate, authorize(['admin', 'agent']), async (req, res) =>
             conditions.push(`u.role = $${params.length}`);
         }
 
-        // event_type filter (preferred) — whitelist checked
+        if (agent_team) {
+            const normalizedTeam = String(agent_team).trim().toUpperCase();
+
+            if (normalizedTeam === 'ADMIN') {
+                conditions.push(`u.role = 'admin'`);
+            } else {
+                params.push(normalizedTeam);
+                conditions.push(`p.agent_team = $${params.length}`);
+                conditions.push(`u.role = 'agent'`);
+            }
+        }
+
+        // event_type filter (preferred) — match the exact computed event_type used in response rows
         if (event_type && EVENT_TYPE_CONDITIONS[event_type]) {
-            conditions.push(`(${EVENT_TYPE_CONDITIONS[event_type]})`);
+            params.push(String(event_type).trim().toLowerCase());
+            conditions.push(`(${EVENT_TYPE_SQL}) = $${params.length}`);
         }
 
         // action_type filter (backward-compat) — whitelist checked
