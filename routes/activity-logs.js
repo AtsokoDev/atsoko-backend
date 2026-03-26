@@ -338,6 +338,21 @@ router.get('/', authenticate, authorize(['admin', 'agent']), async (req, res) =>
             limit = 20,
         } = req.query;
 
+        const selectedEventTypes = (() => {
+            if (!event_type) return [];
+
+            const rawValues = Array.isArray(event_type)
+                ? event_type.flatMap((value) => String(value).split(','))
+                : String(event_type).split(',');
+
+            const normalized = rawValues
+                .map((value) => value.trim().toLowerCase())
+                .filter(Boolean)
+                .filter((value) => EVENT_TYPE_CONDITIONS[value]);
+
+            return [...new Set(normalized)];
+        })();
+
         const safeLimit  = Math.min(parseInt(limit) || 20, 100);
         const safeOffset = ((parseInt(page) || 1) - 1) * safeLimit;
 
@@ -385,14 +400,22 @@ router.get('/', authenticate, authorize(['admin', 'agent']), async (req, res) =>
             }
         }
 
-        // event_type filter (preferred) — match the exact computed event_type used in response rows
-        if (event_type && EVENT_TYPE_CONDITIONS[event_type]) {
-            params.push(String(event_type).trim().toLowerCase());
-            conditions.push(`(${EVENT_TYPE_SQL}) = $${params.length}`);
+        // event_type filter (preferred) — supports single and comma-separated multi-select values
+        if (selectedEventTypes.length > 0) {
+            if (selectedEventTypes.length === 1) {
+                params.push(selectedEventTypes[0]);
+                conditions.push(`(${EVENT_TYPE_SQL}) = $${params.length}`);
+            } else {
+                const eventTypeConditions = selectedEventTypes.map((value) => {
+                    params.push(value);
+                    return `(${EVENT_TYPE_SQL}) = $${params.length}`;
+                });
+                conditions.push(`(${eventTypeConditions.join(' OR ')})`);
+            }
         }
 
         // action_type filter (backward-compat) — whitelist checked
-        if (!event_type && action_type && ACTION_TYPE_CONDITIONS[action_type]) {
+        if (selectedEventTypes.length === 0 && action_type && ACTION_TYPE_CONDITIONS[action_type]) {
             conditions.push(`(${ACTION_TYPE_CONDITIONS[action_type]})`);
         }
 
