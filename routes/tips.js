@@ -39,7 +39,8 @@ router.get('/', async (req, res) => {
             page = 1,
             limit = 20,
             published = true,
-            sort = 'published_at' // 'published_at' (default) or 'display_order'
+            sort = 'published_at', // 'published_at' (default) or 'display_order'
+            search = ''
         } = req.query;
 
         const validatedPage = validateInteger(page, 'page', 1);
@@ -50,6 +51,37 @@ router.get('/', async (req, res) => {
         const params = [];
         const countParams = [];
         let paramCount = 1;
+
+        const normalizedSearch =
+            typeof search === 'string'
+                ? search.trim().replace(/\s+/g, ' ').slice(0, 120)
+                : '';
+
+        // Full-text + fallback substring search on title/excerpt/content
+        if (normalizedSearch) {
+            const ftsParam = `$${paramCount}`;
+            const ilikeParam = `$${paramCount + 1}`;
+            const searchClause = `
+                AND (
+                    to_tsvector(
+                        'simple',
+                        COALESCE(title, '') || ' ' ||
+                        COALESCE(excerpt, '') || ' ' ||
+                        REGEXP_REPLACE(COALESCE(content, ''), '<[^>]+>', ' ', 'g')
+                    ) @@ plainto_tsquery('simple', ${ftsParam})
+                    OR title ILIKE ${ilikeParam}
+                    OR excerpt ILIKE ${ilikeParam}
+                    OR content ILIKE ${ilikeParam}
+                )
+            `;
+
+            query += searchClause;
+            countQuery += searchClause;
+
+            params.push(normalizedSearch, `%${normalizedSearch}%`);
+            countParams.push(normalizedSearch, `%${normalizedSearch}%`);
+            paramCount += 2;
+        }
 
         // Filter by published status
         if (published !== undefined && published !== 'all') {
@@ -64,10 +96,23 @@ router.get('/', async (req, res) => {
         }
 
         // Order by selected sort option
-        if (sort === 'display_order') {
-            query += ` ORDER BY display_order ASC, COALESCE(published_at, created_at) DESC`;
+        const baseSort =
+            sort === 'display_order'
+                ? `display_order ASC, COALESCE(published_at, created_at) DESC`
+                : `COALESCE(published_at, created_at) DESC`;
+
+        if (normalizedSearch) {
+            query += ` ORDER BY ts_rank(
+                to_tsvector(
+                    'simple',
+                    COALESCE(title, '') || ' ' ||
+                    COALESCE(excerpt, '') || ' ' ||
+                    REGEXP_REPLACE(COALESCE(content, ''), '<[^>]+>', ' ', 'g')
+                ),
+                plainto_tsquery('simple', $1)
+            ) DESC, ${baseSort}`;
         } else {
-            query += ` ORDER BY COALESCE(published_at, created_at) DESC`;
+            query += ` ORDER BY ${baseSort}`;
         }
 
         query += ` LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
@@ -89,7 +134,8 @@ router.get('/', async (req, res) => {
                 total,
                 pages: Math.ceil(total / validatedLimit)
             },
-            sort: sort
+            sort: sort,
+            search: normalizedSearch || null
         });
     } catch (error) {
         console.error(error);
