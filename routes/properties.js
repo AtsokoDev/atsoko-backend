@@ -44,6 +44,44 @@ const normalizeKeyword = (value) => {
     return value.trim().replace(/\s+/g, ' ');
 };
 
+// Normalize query values from single string, comma-separated string,
+// repeated query params, or JSON array string into a flat string array.
+const normalizeMultiValueParam = (value) => {
+    if (value === undefined || value === null) return [];
+
+    const inputValues = Array.isArray(value) ? value : [value];
+    const normalized = [];
+
+    inputValues.forEach((item) => {
+        if (item === undefined || item === null) return;
+
+        const raw = String(item).trim();
+        if (!raw) return;
+
+        if (raw.startsWith('[') && raw.endsWith(']')) {
+            try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) {
+                    parsed.forEach((parsedItem) => {
+                        const parsedValue = String(parsedItem).trim();
+                        if (parsedValue) normalized.push(parsedValue);
+                    });
+                    return;
+                }
+            } catch (_) {
+                // Fall through to comma-based parsing.
+            }
+        }
+
+        raw.split(',').forEach((part) => {
+            const valuePart = part.trim();
+            if (valuePart) normalized.push(valuePart);
+        });
+    });
+
+    return normalized;
+};
+
 const ALLOWED_BUILDING_TYPES = ['S', 'C', 'W'];
 
 // Map full-text building type labels to codes
@@ -134,6 +172,8 @@ router.get('/remarks-suggestions', authenticate, async (req, res) => {
             features,
             feature,
             labels,
+            zone_type,
+            zone_types,
             min_height,
             max_height,
             clear_height,
@@ -310,9 +350,18 @@ router.get('/remarks-suggestions', authenticate, async (req, res) => {
             paramCount++;
         }
 
-        // Labels filter
-        if (labels) {
-            const labelsArray = Array.isArray(labels) ? labels : labels.split(',').map(l => l.trim());
+        // Labels/Zone Type filter (supports labels, zone_type, zone_types aliases)
+        const labelsArray = (() => {
+            const normalizedLabels = normalizeMultiValueParam(labels);
+            if (normalizedLabels.length > 0) return normalizedLabels;
+
+            const normalizedZoneType = normalizeMultiValueParam(zone_type);
+            if (normalizedZoneType.length > 0) return normalizedZoneType;
+
+            return normalizeMultiValueParam(zone_types);
+        })();
+
+        if (labelsArray.length > 0) {
             query += ` AND (labels LIKE '[%]' AND labels::jsonb @> $${paramCount}::jsonb)`;
             params.push(JSON.stringify(labelsArray));
             paramCount++;
@@ -575,6 +624,8 @@ router.get('/', optionalAuth, async (req, res) => {
             feature,           // Single feature filter (frontend)
             // Label filters
             labels,            // Zone Type (database column name)
+            zone_type,         // Zone Type alias from frontend
+            zone_types,        // Zone Type multi-select alias from frontend
             // Height filters
             min_height,        // Clear height min
             max_height,        // Clear height max
@@ -928,11 +979,18 @@ router.get('/', optionalAuth, async (req, res) => {
             paramCount++;
         }
 
-        // 11. Labels filter (expects JSON Array, stored as JSON Array string)
-        if (labels) {
-            // Support both JSON array and comma-separated string
-            const labelsArray = Array.isArray(labels) ? labels : labels.split(',').map(l => l.trim());
+        // 11. Labels/Zone Type filter (supports labels, zone_type, zone_types aliases)
+        const labelsArray = (() => {
+            const normalizedLabels = normalizeMultiValueParam(labels);
+            if (normalizedLabels.length > 0) return normalizedLabels;
 
+            const normalizedZoneType = normalizeMultiValueParam(zone_type);
+            if (normalizedZoneType.length > 0) return normalizedZoneType;
+
+            return normalizeMultiValueParam(zone_types);
+        })();
+
+        if (labelsArray.length > 0) {
             // Use JSONB contains operator (@>) - same as features
             query += ` AND (labels LIKE '[%]' AND labels::jsonb @> $${paramCount}::jsonb)`;
             countQuery += ` AND (labels LIKE '[%]' AND labels::jsonb @> $${paramCount}::jsonb)`;
@@ -1137,7 +1195,9 @@ router.get('/', optionalAuth, async (req, res) => {
                 features,
                 feature,
                 floor_load,
-                labels
+                labels: labelsArray,
+                zone_type,
+                zone_types
             },
             sorting: {
                 sort: validatedSort,
