@@ -345,7 +345,7 @@ router.get('/remarks-suggestions', authenticate, async (req, res) => {
         // Features filter
         if (features) {
             const featuresArray = Array.isArray(features) ? features : features.split(',').map(f => f.trim());
-            query += ` AND (features LIKE '[%]' AND features::jsonb @> $${paramCount}::jsonb)`;
+            query += ` AND features::jsonb @> $${paramCount}::jsonb`;
             params.push(JSON.stringify(featuresArray));
             paramCount++;
         }
@@ -362,7 +362,7 @@ router.get('/remarks-suggestions', authenticate, async (req, res) => {
         })();
 
         if (labelsArray.length > 0) {
-            query += ` AND (labels LIKE '[%]' AND labels::jsonb @> $${paramCount}::jsonb)`;
+            query += ` AND labels::jsonb @> $${paramCount}::jsonb`;
             params.push(JSON.stringify(labelsArray));
             paramCount++;
         }
@@ -972,8 +972,8 @@ router.get('/', optionalAuth, async (req, res) => {
             const featuresArray = Array.isArray(features) ? features : features.split(',').map(f => f.trim());
 
             // Use JSONB contains operator (@>) to check if all requested features exist
-            query += ` AND (features LIKE '[%]' AND features::jsonb @> $${paramCount}::jsonb)`;
-            countQuery += ` AND (features LIKE '[%]' AND features::jsonb @> $${paramCount}::jsonb)`;
+            query += ` AND features::jsonb @> $${paramCount}::jsonb`;
+            countQuery += ` AND features::jsonb @> $${paramCount}::jsonb`;
             params.push(JSON.stringify(featuresArray));
             countParams.push(JSON.stringify(featuresArray));
             paramCount++;
@@ -992,8 +992,8 @@ router.get('/', optionalAuth, async (req, res) => {
 
         if (labelsArray.length > 0) {
             // Use JSONB contains operator (@>) - same as features
-            query += ` AND (labels LIKE '[%]' AND labels::jsonb @> $${paramCount}::jsonb)`;
-            countQuery += ` AND (labels LIKE '[%]' AND labels::jsonb @> $${paramCount}::jsonb)`;
+            query += ` AND labels::jsonb @> $${paramCount}::jsonb`;
+            countQuery += ` AND labels::jsonb @> $${paramCount}::jsonb`;
             params.push(JSON.stringify(labelsArray));
             countParams.push(JSON.stringify(labelsArray));
             paramCount++;
